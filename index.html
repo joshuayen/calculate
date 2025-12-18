@@ -1,0 +1,150 @@
+
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>年度政績倍數計算器（w=2.5, β=15；單位：萬）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Microsoft JhengHei", sans-serif; margin: 2rem; }
+    h1 { margin: 0 0 0.75rem 0; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; max-width: 720px; }
+    .row { display: grid; grid-template-columns: 180px 1fr; gap: 0.75rem; align-items: center; margin: 0.5rem 0; }
+    input, select { width: 100%; padding: 0.5rem; font-size: 1rem; }
+    .btn { display:inline-block; padding:0.5rem 0.9rem; border:1px solid #888; border-radius:6px; cursor:pointer; background:#f5f5f5; }
+    .btn:hover { background:#eee; }
+    .muted { color:#666; font-size:0.95rem; }
+    .out { margin-top: 1rem; line-height: 1.8; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:1rem; }
+    code { background: #f3f3f3; padding: 0.2rem 0.4rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>年度政績倍數計算器</h1>
+  <p class="muted">單位：<strong>萬</strong>；加權分數：<code>E = 殲敵 + w × 戰損 + β × 建設</code>；預設 w=2.5、β=15</p>
+
+  <div class="card">
+    <div class="row">
+      <label for="kill">殲敵（萬）</label>
+      <input id="kill" type="number" step="0.0001" placeholder="例如 311" />
+    </div>
+    <div class="row">
+      <label for="loss">戰損（萬）</label>
+      <input id="loss" type="number" step="0.0001" placeholder="例如 247" />
+    </div>
+    <div class="row">
+      <label for="build">建設（萬）</label>
+      <input id="build" type="number" step="0.0001" placeholder="例如 1.8" />
+    </div>
+
+    <div class="row">
+      <label for="w">戰損權重 w</label>
+      <input id="w" type="number" step="0.1" value="2.5" />
+    </div>
+    <div class="row">
+      <label for="beta">建設加權 β</label>
+      <input id="beta" type="number" step="1" value="15" />
+    </div>
+
+    <div class="row">
+      <label for="zeroRule">S=0 保底規則</label>
+      <div>
+        <label><input id="zeroRule" type="checkbox" /> 殲敵+戰損=0 時，建設≥1.3639萬 ⇒ 1 倍，否則 0 倍</label>
+      </div>
+    </div>
+
+    <div class="row">
+      <span></span>
+      <button class="btn" id="calcBtn">計算</button>
+    </div>
+
+    <div class="out" id="out"></div>
+  </div>
+
+  <script>
+    // 門檻表（單位：萬），採 w=2.5、β=15 擬合（0→1 到 8→9）
+    const THRESHOLDS_WAN_BASE = [
+      160567.50/10000,   // T01  → 16.05675
+      301561.50/10000,   // T12  → 30.15615
+      742612.75/10000,   // T23  → 74.261275
+      1527720.75/10000,  // T34  → 152.772075
+      3012212.75/10000,  // T45  → 301.221275
+      5433433.50/10000,  // T56  → 543.34335
+      7929262.25/10000,  // T67  → 792.926225
+      12647229.00/10000, // T78  → 1264.7229
+      20376259.25/10000, // T89  → 2037.625925
+    ];
+
+    // 計算分數 E（萬）
+    function computeE(kill, loss, build, w, beta) {
+      return kill + w * loss + beta * build;
+    }
+
+    // 計算倍數 & 尚差百分比
+    function compute(kill, loss, build, w, beta, useZeroRule) {
+      const S = kill + loss;
+      let E = computeE(kill, loss, build, w, beta);
+
+      // 倍數 = 通過門檻個數（基礎為 0 倍）
+      let passed = 0;
+      for (const t of THRESHOLDS_WAN_BASE) {
+        if (E >= t) passed++;
+        else break;
+      }
+      let multiplier = passed;
+
+      // S=0 保底規則（選用）
+      if (useZeroRule && S === 0) {
+        multiplier = (build >= 1.3639) ? 1 : 0;
+      }
+
+      // 下一門檻與下界
+      const nextThreshold = (passed < THRESHOLDS_WAN_BASE.length) ? THRESHOLDS_WAN_BASE[passed] : null;
+      const lowerBound = (multiplier === 0) ? 0 : THRESHOLDS_WAN_BASE[multiplier - 1];
+
+      // 尚差百分比（(下一門檻 - E) / (下一門檻 - 當前下界)）
+      let remainingPct = null;
+      if (nextThreshold !== null) {
+        const denom = nextThreshold - lowerBound;
+        let ratio = (nextThreshold - E) / denom;
+        if (ratio < 0) ratio = 0;
+        if (ratio > 1) ratio = 1;
+        remainingPct = ratio * 100;
+      }
+
+      return { E, multiplier, nextThreshold, lowerBound, remainingPct };
+    }
+
+    function fmt(x, digits=6) {
+      return (x === null || x === undefined) ? "-" : x.toFixed(digits);
+    }
+
+    document.getElementById('calcBtn').addEventListener('click', () => {
+      const kill  = parseFloat(document.getElementById('kill').value || "0");
+      const loss  = parseFloat(document.getElementById('loss').value || "0");
+      const build = parseFloat(document.getElementById('build').value || "0");
+      const w     = parseFloat(document.getElementById('w').value || "2.5");
+      const beta  = parseFloat(document.getElementById('beta').value || "15");
+      const useZeroRule = document.getElementById('zeroRule').checked;
+
+      const { E, multiplier, nextThreshold, lowerBound, remainingPct } = compute(kill, loss, build, w, beta, useZeroRule);
+
+      const out = document.getElementById('out');
+      out.innerHTML = `
+        <div class="grid">
+          <div>
+            <div>加權分數 E（萬）：<strong>${fmt(E, 6)}</strong></div>
+            <div>目前倍數：<strong>${multiplier}</strong></div>
+          </div>
+          <div>
+            <div>下一倍門檻（萬）：<strong>${nextThreshold ? fmt(nextThreshold, 6) : "—（已達最高門檻）"}</strong></div>
+            <div>當前倍數下界（萬）：<strong>${fmt(lowerBound, 6)}</strong></div>
+          </div>
+        </div>
+               <div>距下一倍尚差百分比：<strong>${remainingPct !== null ? fmt(remainingPct, 2) + "%" : "—"}</strong></div>
+        <div class="muted">計算式：(下一門檻 - E) / (下一門檻 - 當前下界)</div>
+      `;
+    });
+  </script>
+</body>
