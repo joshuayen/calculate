@@ -1,150 +1,243 @@
-
 <!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <title>年度政績倍數計算器（w=2.5, β=15；單位：萬）</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>年度獎勵倍率計算器（v7_full）</title>
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Microsoft JhengHei", sans-serif; margin: 2rem; }
-    h1 { margin: 0 0 0.75rem 0; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; max-width: 720px; }
-    .row { display: grid; grid-template-columns: 180px 1fr; gap: 0.75rem; align-items: center; margin: 0.5rem 0; }
-    input, select { width: 100%; padding: 0.5rem; font-size: 1rem; }
-    .btn { display:inline-block; padding:0.5rem 0.9rem; border:1px solid #888; border-radius:6px; cursor:pointer; background:#f5f5f5; }
-    .btn:hover { background:#eee; }
-    .muted { color:#666; font-size:0.95rem; }
-    .out { margin-top: 1rem; line-height: 1.8; }
-    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:1rem; }
-    code { background: #f3f3f3; padding: 0.2rem 0.4rem; border-radius: 4px; }
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --accent: #38bdf8;
+      --danger: #ef4444;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif; margin: 0; }
+    header { padding: 24px; border-bottom: 1px solid #1f2937; }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    .container { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    label { display:block; margin: 10px 0 6px; font-weight: 600; }
+    input[type="number"], input[type="text"], select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #374151; background: #0b1220; color: var(--text); }
+    .row { display:flex; gap: 16px; flex-wrap: wrap; }
+    .col { flex:1 1 240px; }
+    .btns { display:flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+    button { padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    .primary { background: var(--accent); color: #081018; }
+    .secondary { background: #374151; color: var(--text); }
+    .danger { background: var(--danger); color:#fff; }
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+    code, pre { background:#0b1220; padding: 6px 8px; border-radius: 8px; border:1px solid #1f2937; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 8px; border-bottom: 1px solid #1f2937; text-align: right; }
+    th:first-child, td:first-child { text-align:left; }
+    footer { padding: 24px; border-top: 1px solid #1f2937; font-size: 12px; color:#9ca3af; }
+    .tag { display:inline-block; padding:2px 8px; border-radius:999px; background:#1f2937; color:#93c5fd; font-size:12px; margin-left:8px; }
   </style>
 </head>
 <body>
-  <h1>年度政績倍數計算器</h1>
-  <p class="muted">單位：<strong>萬</strong>；加權分數：<code>E = 殲敵 + w × 戰損 + β × 建設</code>；預設 w=2.5、β=15</p>
+  <header class="container">
+    <h1>年度獎勵倍率計算器 <span class="tag">v7_full</span></h1>
+    <div>公式：<code class="mono">E = 1×殲敵 + 3.2×戰損 + 15×建設</code>（單位：萬）</div>
+    <div>門檻（萬）：<code class="mono">16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2347.90297, 3456.38109, 6147.95</code></div>
+  </header>
 
-  <div class="card">
-    <div class="row">
-      <label for="kill">殲敵（萬）</label>
-      <input id="kill" type="number" step="0.0001" placeholder="例如 311" />
-    </div>
-    <div class="row">
-      <label for="loss">戰損（萬）</label>
-      <input id="loss" type="number" step="0.0001" placeholder="例如 247" />
-    </div>
-    <div class="row">
-      <label for="build">建設（萬）</label>
-      <input id="build" type="number" step="0.0001" placeholder="例如 1.8" />
-    </div>
-
-    <div class="row">
-      <label for="w">戰損權重 w</label>
-      <input id="w" type="number" step="0.1" value="2.5" />
-    </div>
-    <div class="row">
-      <label for="beta">建設加權 β</label>
-      <input id="beta" type="number" step="1" value="15" />
-    </div>
-
-    <div class="row">
-      <label for="zeroRule">S=0 保底規則</label>
-      <div>
-        <label><input id="zeroRule" type="checkbox" /> 殲敵+戰損=0 時，建設≥1.3639萬 ⇒ 1 倍，否則 0 倍</label>
+  <main class="container">
+    <section class="panel">
+      <h2 style="margin:0 0 12px; font-size:18px;">輸入參數</h2>
+      <div class="row">
+        <div class="col">
+          <label for="unit">輸入單位</label>
+          <select id="unit">
+            <option value="wan" selected>萬（建議）</option>
+            <option value="abs">原始數值（非萬）</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="alpha">權重 α（殲敵）</label>
+          <input id="alpha" type="number" step="0.01" value="1.0" />
+        </div>
+        <div class="col">
+          <label for="w">權重 w（戰損）</label>
+          <input id="w" type="number" step="0.01" value="3.2" />
+        </div>
+        <div class="col">
+          <label for="beta">權重 β（建設）</label>
+          <input id="beta" type="number" step="0.01" value="15.0" />
+        </div>
       </div>
-    </div>
+      <div class="row">
+        <div class="col">
+          <label for="kill">殲敵</label>
+          <input id="kill" type="number" step="0.001" placeholder="例如 311" />
+        </div>
+        <div class="col">
+          <label for="loss">戰損</label>
+          <input id="loss" type="number" step="0.001" placeholder="例如 247" />
+        </div>
+        <div class="col">
+          <label for="build">建設</label>
+          <input id="build" type="number" step="0.001" placeholder="例如 1.8" />
+        </div>
+      </div>
+      <div class="btns">
+        <button class="primary" id="btnCalc">計算倍數</button>
+        <button class="secondary" id="btnSample">載入範例</button>
+        <button class="danger" id="btnReset">清空</button>
+      </div>
+      <p style="margin-top:8px; color:#9ca3af;">提示：門檻係以預設權重（1/3.2/15）推得；若修改權重，<b>倍數判定可能不再保證 100% 吻合</b>。</p>
+    </section>
 
-    <div class="row">
-      <span></span>
-      <button class="btn" id="calcBtn">計算</button>
-    </div>
+    <section class="panel">
+      <h2 style="margin:0 0 12px; font-size:18px;">結果</h2>
+      <div class="grid">
+        <div>
+          <div>線性分數 E（萬）</div>
+          <div id="Ewan" class="mono" style="font-size:20px; margin:4px 0;">—</div>
+        </div>
+        <div>
+          <div>目前倍數</div>
+          <div id="mult" class="mono" style="font-size:20px; margin:4px 0;">—</div>
+        </div>
+        <div>
+          <div>當前倍數下界（萬）</div>
+          <div id="lower" class="mono">—</div>
+        </div>
+        <div>
+          <div>下一倍門檻（萬）</div>
+          <div id="next" class="mono">—</div>
+        </div>
+        <div>
+          <div>前往下一倍完成百分比</div>
+          <div id="progress" class="mono">—</div>
+        </div>
+      </div>
+    </section>
 
-    <div class="out" id="out"></div>
-  </div>
+    <section class="panel">
+      <h2 style="margin:0 0 12px; font-size:18px;">門檻一覽（萬）</h2>
+      <table>
+        <thead>
+          <tr><th>切換</th><th>門檻 E（萬）</th><th>門檻 E（原始數值）</th></tr>
+        </thead>
+        <tbody id="thBody"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="container">
+    <div>最後更新時間：<span id="lastUpdated">2025-12-31 22:20:28 (GMT+08:00)</span></div>
+    <div>權重版本：<code class="mono">alpha=1, w=3.2, beta=15</code>；門檻版：<code class="mono">v2025-12-28</code></div>
+  </footer>
 
   <script>
-    // 門檻表（單位：萬），採 w=2.5、β=15 擬合（0→1 到 8→9）
-    const THRESHOLDS_WAN_BASE = [
-      160567.50/10000,   // T01  → 16.05675
-      301561.50/10000,   // T12  → 30.15615
-      742612.75/10000,   // T23  → 74.261275
-      1527720.75/10000,  // T34  → 152.772075
-      3012212.75/10000,  // T45  → 301.221275
-      5433433.50/10000,  // T56  → 543.34335
-      7929262.25/10000,  // T67  → 792.926225
-      12647229.00/10000, // T78  → 1264.7229
-      20376259.25/10000, // T89  → 2037.625925
-    ];
+    const SCALE = 1e4; // 原始→萬
+    const DEFAULTS = { alpha: 1.0, w: 3.2, beta: 15.0 };
+    const THRESHOLDS_WAN = [16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2347.90297, 3456.38109, 6147.95];
 
-    // 計算分數 E（萬）
-    function computeE(kill, loss, build, w, beta) {
-      return kill + w * loss + beta * build;
+    function toWan(value, unit) {
+      const v = Number(value);
+      if (!isFinite(v)) return NaN;
+      return unit === 'abs' ? v / SCALE : v;
     }
 
-    // 計算倍數 & 尚差百分比
-    function compute(kill, loss, build, w, beta, useZeroRule) {
-      const S = kill + loss;
-      let E = computeE(kill, loss, build, w, beta);
+    function scoreE(alpha, w, beta, kill_wan, loss_wan, build_wan) {
+      return alpha*kill_wan + w*loss_wan + beta*build_wan;
+    }
 
-      // 倍數 = 通過門檻個數（基礎為 0 倍）
+    function classify(Ewan) {
       let passed = 0;
-      for (const t of THRESHOLDS_WAN_BASE) {
-        if (E >= t) passed++;
-        else break;
+      for (const t of THRESHOLDS_WAN) {
+        if (Ewan >= t) passed++; else break;
       }
-      let multiplier = passed;
-
-      // S=0 保底規則（選用）
-      if (useZeroRule && S === 0) {
-        multiplier = (build >= 1.3639) ? 1 : 0;
+      const current = passed;
+      const lower = current === 0 ? 0 : THRESHOLDS_WAN[current-1];
+      const next = current < THRESHOLDS_WAN.length ? THRESHOLDS_WAN[current] : null;
+      let progress = null;
+      if (next !== null) {
+        const denom = next - lower;
+        const ratio = denom > 0 ? Math.min(1, Math.max(0, (Ewan - lower) / denom)) : 0;
+        progress = ratio*100;
       }
-
-      // 下一門檻與下界
-      const nextThreshold = (passed < THRESHOLDS_WAN_BASE.length) ? THRESHOLDS_WAN_BASE[passed] : null;
-      const lowerBound = (multiplier === 0) ? 0 : THRESHOLDS_WAN_BASE[multiplier - 1];
-
-      // 尚差百分比（(下一門檻 - E) / (下一門檻 - 當前下界)）
-      let remainingPct = null;
-      if (nextThreshold !== null) {
-        const denom = nextThreshold - lowerBound;
-        let ratio = (nextThreshold - E) / denom;
-        if (ratio < 0) ratio = 0;
-        if (ratio > 1) ratio = 1;
-        remainingPct = ratio * 100;
-      }
-
-      return { E, multiplier, nextThreshold, lowerBound, remainingPct };
+      return { current, lower, next, progress };
     }
 
-    function fmt(x, digits=6) {
-      return (x === null || x === undefined) ? "-" : x.toFixed(digits);
+    function fmtWan(x) {
+      return (x === null || x === undefined) ? '—' : x.toFixed(6);
+    }
+    function fmtPct(x) {
+      return (x === null || x === undefined) ? '—' : x.toFixed(2) + '%';
+    }
+    function fmtAbsFromWan(x) {
+      if (x === null || x === undefined) return '—';
+      return Math.round(x * SCALE).toLocaleString('zh-Hant-TW');
     }
 
-    document.getElementById('calcBtn').addEventListener('click', () => {
-      const kill  = parseFloat(document.getElementById('kill').value || "0");
-      const loss  = parseFloat(document.getElementById('loss').value || "0");
-      const build = parseFloat(document.getElementById('build').value || "0");
-      const w     = parseFloat(document.getElementById('w').value || "2.5");
-      const beta  = parseFloat(document.getElementById('beta').value || "15");
-      const useZeroRule = document.getElementById('zeroRule').checked;
+    function renderThresholds() {
+      const tbody = document.getElementById('thBody');
+      tbody.innerHTML = '';
+      for (let i=0; i<THRESHOLDS_WAN.length; i++) {
+        const tr = document.createElement('tr');
+        const tdA = document.createElement('td'); tdA.textContent = i + '→' + (i+1); tr.appendChild(tdA);
+        const tdB = document.createElement('td'); tdB.textContent = fmtWan(THRESHOLDS_WAN[i]); tr.appendChild(tdB);
+        const tdC = document.createElement('td'); tdC.textContent = fmtAbsFromWan(THRESHOLDS_WAN[i]); tr.appendChild(tdC);
+        tbody.appendChild(tr);
+      }
+    }
 
-      const { E, multiplier, nextThreshold, lowerBound, remainingPct } = compute(kill, loss, build, w, beta, useZeroRule);
+    function calc() {
+      const unit = document.getElementById('unit').value;
+      const alpha = Number(document.getElementById('alpha').value);
+      const w = Number(document.getElementById('w').value);
+      const beta = Number(document.getElementById('beta').value);
+      const kill = toWan(document.getElementById('kill').value, unit);
+      const loss = toWan(document.getElementById('loss').value, unit);
+      const build = toWan(document.getElementById('build').value, unit);
 
-      const out = document.getElementById('out');
-      out.innerHTML = `
-        <div class="grid">
-          <div>
-            <div>加權分數 E（萬）：<strong>${fmt(E, 6)}</strong></div>
-            <div>目前倍數：<strong>${multiplier}</strong></div>
-          </div>
-          <div>
-            <div>下一倍門檻（萬）：<strong>${nextThreshold ? fmt(nextThreshold, 6) : "—（已達最高門檻）"}</strong></div>
-            <div>當前倍數下界（萬）：<strong>${fmt(lowerBound, 6)}</strong></div>
-          </div>
-        </div>
-               <div>距下一倍尚差百分比：<strong>${remainingPct !== null ? fmt(remainingPct, 2) + "%" : "—"}</strong></div>
-        <div class="muted">計算式：(下一門檻 - E) / (下一門檻 - 當前下界)</div>
-      `;
-    });
+      if ([kill,loss,build].some(v => !isFinite(v))) {
+        alert('請輸入有效的數字'); return;
+      }
+      const Ewan = scoreE(alpha, w, beta, kill, loss, build);
+      const cls = classify(Ewan);
+
+      document.getElementById('Ewan').textContent = fmtWan(Ewan);
+      document.getElementById('mult').textContent = cls.current.toString();
+      document.getElementById('lower').textContent = fmtWan(cls.lower);
+      document.getElementById('next').textContent = fmtWan(cls.next);
+      document.getElementById('progress').textContent = fmtPct(cls.progress);
+    }
+
+    function loadSample() {
+      document.getElementById('unit').value = 'wan';
+      document.getElementById('alpha').value = DEFAULTS.alpha;
+      document.getElementById('w').value = DEFAULTS.w;
+      document.getElementById('beta').value = DEFAULTS.beta;
+      document.getElementById('kill').value = '406.392';
+      document.getElementById('loss').value = '352.1257';
+      document.getElementById('build').value = '0';
+      calc();
+    }
+
+    function resetAll() {
+      document.getElementById('unit').value = 'wan';
+      document.getElementById('alpha').value = DEFAULTS.alpha;
+      document.getElementById('w').value = DEFAULTS.w;
+      document.getElementById('beta').value = DEFAULTS.beta;
+      document.getElementById('kill').value = '';
+      document.getElementById('loss').value = '';
+      document.getElementById('build').value = '';
+      document.getElementById('Ewan').textContent = '—';
+      document.getElementById('mult').textContent = '—';
+      document.getElementById('lower').textContent = '—';
+      document.getElementById('next').textContent = '—';
+      document.getElementById('progress').textContent = '—';
+    }
+
+    document.getElementById('btnCalc').addEventListener('click', calc);
+    document.getElementById('btnSample').addEventListener('click', loadSample);
+    document.getElementById('btnReset').addEventListener('click', resetAll);
+    renderThresholds();
   </script>
 </body>
+</html>
