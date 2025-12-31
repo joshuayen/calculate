@@ -6,11 +6,11 @@
   <title>年度獎勵倍率計算器（v7_full）</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --panel: #111827;
-      --text: #e5e7eb;
-      --accent: #38bdf8;
-      --danger: #ef4444;
+      --bg: #0f172a; /* slate-900 */
+      --panel: #111827; /* gray-900 */
+      --text: #e5e7eb; /* gray-200 */
+      --accent: #38bdf8; /* sky-400 */
+      --danger: #ef4444; /* red-500 */
     }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif; margin: 0; }
     header { padding: 24px; border-bottom: 1px solid #1f2937; }
@@ -40,7 +40,7 @@
   <header class="container">
     <h1>年度獎勵倍率計算器 <span class="tag">v7_full</span></h1>
     <div>公式：<code class="mono">E = 1×殲敵 + 3.2×戰損 + 15×建設</code>（單位：萬）</div>
-    <div>門檻（萬）：<code class="mono">16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2347.90297, 3456.38109, 6147.95</code></div>
+    <div>門檻（萬）：<code class="mono">16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2360.99804, 3456.38109, 6147.95</code></div>
   </header>
 
   <main class="container">
@@ -127,14 +127,14 @@
   </main>
 
   <footer class="container">
-    <div>最後更新時間：<span id="lastUpdated">2025-12-31 22:20:28 (GMT+08:00)</span></div>
-    <div>權重版本：<code class="mono">alpha=1, w=3.2, beta=15</code>；門檻版：<code class="mono">v2025-12-28</code></div>
+    <div>最後更新時間：<span id="lastUpdated">2026-01-01 00:00:21 (GMT+08:00)</span></div>
+    <div>權重版本：<code class="mono">alpha=1, w=3.2, beta=15</code>；門檻版：<code class="mono">v2025-12-31-8to9fix</code></div>
   </footer>
 
   <script>
     const SCALE = 1e4; // 原始→萬
     const DEFAULTS = { alpha: 1.0, w: 3.2, beta: 15.0 };
-    const THRESHOLDS_WAN = [16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2347.90297, 3456.38109, 6147.95];
+    const THRESHOLDS_WAN = [16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2360.99804, 3456.38109, 6147.95];
 
     function toWan(value, unit) {
       const v = Number(value);
