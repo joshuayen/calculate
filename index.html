@@ -1,243 +1,228 @@
-<!doctype html>
-<html lang="zh-Hant">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>年度獎勵倍率計算器（v7_full）</title>
   <style>
-    :root {
-      --bg: #0f172a; /* slate-900 */
-      --panel: #111827; /* gray-900 */
-      --text: #e5e7eb; /* gray-200 */
-      --accent: #38bdf8; /* sky-400 */
-      --danger: #ef4444; /* red-500 */
-    }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif; margin: 0; }
-    header { padding: 24px; border-bottom: 1px solid #1f2937; }
-    h1 { margin: 0 0 8px; font-size: 20px; }
-    .container { max-width: 980px; margin: 0 auto; padding: 24px; }
-    .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-    label { display:block; margin: 10px 0 6px; font-weight: 600; }
-    input[type="number"], input[type="text"], select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #374151; background: #0b1220; color: var(--text); }
-    .row { display:flex; gap: 16px; flex-wrap: wrap; }
-    .col { flex:1 1 240px; }
-    .btns { display:flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
-    button { padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
-    .primary { background: var(--accent); color: #081018; }
-    .secondary { background: #374151; color: var(--text); }
-    .danger { background: var(--danger); color:#fff; }
-    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
-    code, pre { background:#0b1220; padding: 6px 8px; border-radius: 8px; border:1px solid #1f2937; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { padding: 8px; border-bottom: 1px solid #1f2937; text-align: right; }
-    th:first-child, td:first-child { text-align:left; }
-    footer { padding: 24px; border-top: 1px solid #1f2937; font-size: 12px; color:#9ca3af; }
-    .tag { display:inline-block; padding:2px 8px; border-radius:999px; background:#1f2937; color:#93c5fd; font-size:12px; margin-left:8px; }
+    :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
+    body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
+    h1,h2{margin:.2rem 0 .5rem}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;margin:0 0 1rem}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+    label{display:block;font-weight:600;margin-bottom:.25rem}
+    input[type="number"],select{width:100%;padding:.5rem;border-radius:8px;border:1px solid var(--border);background:#0b1220;color:var(--fg)}
+    .row{display:flex;gap:8px;align-items:center}
+    .btn{padding:.5rem .75rem;border:1px solid var(--border);border-radius:8px;background:#0b1220;color:var(--fg);cursor:pointer}
+    .btn.primary{background:var(--accent);color:#052e1b;border-color:transparent;font-weight:700}
+    .muted{color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New','Noto Sans Mono',monospace}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--border);padding:.5rem;text-align:right}
+    th:first-child,td:first-child{text-align:center}
+    .ok{color:var(--accent)}
+    .warn{color:var(--warn)}
+    .progress{height:10px;background:#0b1220;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+    .bar{height:100%;background:var(--accent)}
+    footer{margin-top:1rem;font-size:.9rem}
+    code{background:#0b1220;padding:.15rem .35rem;border-radius:6px}
   </style>
 </head>
 <body>
-  <header class="container">
-    <h1>年度獎勵倍率計算器 <span class="tag">v7_full</span></h1>
-    <div>公式：<code class="mono">E = 1×殲敵 + 3.2×戰損 + 15×建設</code>（單位：萬）</div>
-    <div>門檻（萬）：<code class="mono">16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2360.99804, 3456.38109, 6147.95</code></div>
-  </header>
+  <h1>年度獎勵倍率計算器（v7_full）</h1>
+  <div class="card">
+    <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
+    <div class="muted">預設權重：α=1、w=3.2、β=15（以「萬」為單位）</div>
+  </div>
 
-  <main class="container">
-    <section class="panel">
-      <h2 style="margin:0 0 12px; font-size:18px;">輸入參數</h2>
-      <div class="row">
-        <div class="col">
-          <label for="unit">輸入單位</label>
-          <select id="unit">
-            <option value="wan" selected>萬（建議）</option>
-            <option value="abs">原始數值（非萬）</option>
-          </select>
-        </div>
-        <div class="col">
-          <label for="alpha">權重 α（殲敵）</label>
-          <input id="alpha" type="number" step="0.01" value="1.0" />
-        </div>
-        <div class="col">
-          <label for="w">權重 w（戰損）</label>
-          <input id="w" type="number" step="0.01" value="3.2" />
-        </div>
-        <div class="col">
-          <label for="beta">權重 β（建設）</label>
-          <input id="beta" type="number" step="0.01" value="15.0" />
-        </div>
+  <div class="card">
+    <h2>輸入參數</h2>
+    <div class="grid">
+      <div>
+        <label>輸入單位</label>
+        <select id="unit">
+          <option value="wan">萬（建議）</option>
+          <option value="abs">原始數值（非萬）</option>
+        </select>
       </div>
-      <div class="row">
-        <div class="col">
-          <label for="kill">殲敵</label>
-          <input id="kill" type="number" step="0.001" placeholder="例如 311" />
-        </div>
-        <div class="col">
-          <label for="loss">戰損</label>
-          <input id="loss" type="number" step="0.001" placeholder="例如 247" />
-        </div>
-        <div class="col">
-          <label for="build">建設</label>
-          <input id="build" type="number" step="0.001" placeholder="例如 1.8" />
-        </div>
+      <div>
+        <label>權重 α（殲敵）</label>
+        <input id="alpha" type="number" step="0.0001" value="1"/>
       </div>
-      <div class="btns">
-        <button class="primary" id="btnCalc">計算倍數</button>
-        <button class="secondary" id="btnSample">載入範例</button>
-        <button class="danger" id="btnReset">清空</button>
+      <div>
+        <label>權重 w（戰損）</label>
+        <input id="w" type="number" step="0.0001" value="3.2"/>
       </div>
-      <p style="margin-top:8px; color:#9ca3af;">提示：門檻係以預設權重（1/3.2/15）推得；若修改權重，<b>倍數判定可能不再保證 100% 吻合</b>。</p>
-    </section>
+      <div>
+        <label>權重 β（建設）</label>
+        <input id="beta" type="number" step="0.0001" value="15"/>
+      </div>
+      <div>
+        <label>殲敵</label>
+        <input id="kill" type="number" step="1" value="0"/>
+      </div>
+      <div>
+        <label>戰損</label>
+        <input id="loss" type="number" step="1" value="0"/>
+      </div>
+      <div>
+        <label>建設</label>
+        <input id="build" type="number" step="1" value="0"/>
+      </div>
+    </div>
+    <div class="row" style="margin-top:.75rem">
+      <button class="btn primary" id="calc">計算倍數</button>
+      <button class="btn" id="sample">載入範例</button>
+      <button class="btn" id="clear">清空</button>
+      <span class="muted">提示：門檻係以預設權重（1 / 3.2 / 15）推得；若修改權重，倍數判定可能不再保證 100% 吻合。</span>
+    </div>
+  </div>
 
-    <section class="panel">
-      <h2 style="margin:0 0 12px; font-size:18px;">結果</h2>
-      <div class="grid">
-        <div>
-          <div>線性分數 E（萬）</div>
-          <div id="Ewan" class="mono" style="font-size:20px; margin:4px 0;">—</div>
-        </div>
-        <div>
-          <div>目前倍數</div>
-          <div id="mult" class="mono" style="font-size:20px; margin:4px 0;">—</div>
-        </div>
-        <div>
-          <div>當前倍數下界（萬）</div>
-          <div id="lower" class="mono">—</div>
-        </div>
-        <div>
-          <div>下一倍門檻（萬）</div>
-          <div id="next" class="mono">—</div>
-        </div>
-        <div>
-          <div>前往下一倍完成百分比</div>
-          <div id="progress" class="mono">—</div>
-        </div>
+  <div class="card">
+    <h2>結果</h2>
+    <div class="grid">
+      <div>
+        <div class="muted">線性分數 E（萬）</div>
+        <div id="Ewan" class="mono">—</div>
       </div>
-    </section>
+      <div>
+        <div class="muted">目前倍數</div>
+        <div id="mult" class="mono">—</div>
+      </div>
+      <div>
+        <div class="muted">當前倍數下界（萬）</div>
+        <div id="lower" class="mono">—</div>
+      </div>
+      <div>
+        <div class="muted">下一倍門檻（萬）</div>
+        <div id="next" class="mono">—</div>
+      </div>
+      <div>
+        <div class="muted">前往下一倍完成百分比</div>
+        <div id="pct" class="mono">—</div>
+        <div class="progress"><div id="bar" class="bar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
 
-    <section class="panel">
-      <h2 style="margin:0 0 12px; font-size:18px;">門檻一覽（萬）</h2>
-      <table>
-        <thead>
-          <tr><th>切換</th><th>門檻 E（萬）</th><th>門檻 E（原始數值）</th></tr>
-        </thead>
-        <tbody id="thBody"></tbody>
-      </table>
-    </section>
-  </main>
+  <div class="card">
+    <h2>門檻一覽（萬）</h2>
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th>等級</th>
+          <th>門檻 E（萬）</th>
+          <th>門檻 E（原始數值）</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="muted mono">alpha=1, w=3.2, beta=15</div>
+  </div>
 
-  <footer class="container">
-    <div>最後更新時間：<span id="lastUpdated">2026-01-01 00:00:21 (GMT+08:00)</span></div>
-    <div>權重版本：<code class="mono">alpha=1, w=3.2, beta=15</code>；門檻版：<code class="mono">v2025-12-31-8to9fix</code></div>
+  <footer class="muted">
+    <div class="mono">最後更新時間：2026-01-04 21:09:50</div>
   </footer>
 
-  <script>
-    const SCALE = 1e4; // 原始→萬
-    const DEFAULTS = { alpha: 1.0, w: 3.2, beta: 15.0 };
-    const THRESHOLDS_WAN = [16.66535, 33.46593, 83.31532, 174.9787, 344.12081, 631.59837, 928.98169, 1480.53686, 2360.99804, 3456.38109, 6147.95];
+<script>
+const SCALE = 1e4;
+const DEFAULT = { alpha:1, w:3.2, beta:15 };
+// 更新後的 11 個門檻（萬）：0→1, 1→2, …, 10→11
+const THRESHOLDS_WAN = [
+  16.66535,
+  33.46593,
+  83.31532,
+  174.97870,
+  344.12081,
+  631.59837,
+  928.98169,
+  1480.53686,
+  2360.99804,
+  3456.38109,
+  6183.581,
+];
 
-    function toWan(value, unit) {
-      const v = Number(value);
-      if (!isFinite(v)) return NaN;
-      return unit === 'abs' ? v / SCALE : v;
-    }
+function toWan(val, unit){ return unit==='abs' ? (val / SCALE) : val; }
+function scoreE(a,w,b, kw, lw, bw){ return a*kw + w*lw + b*bw; }
+function classify(Ewan){
+  let passed = 0;
+  for (const t of THRESHOLDS_WAN){ if (Ewan >= t) passed++; else break; }
+  const lower = (passed===0? 0 : THRESHOLDS_WAN[passed-1]);
+  const next = (passed < THRESHOLDS_WAN.length ? THRESHOLDS_WAN[passed] : null);
+  let pct = null;
+  if (next!==null){ const denom = (next - lower); pct = Math.max(0, Math.min(1, (Ewan - lower)/denom)); }
+  return {mult:passed, lower, next, pct};
+}
 
-    function scoreE(alpha, w, beta, kill_wan, loss_wan, build_wan) {
-      return alpha*kill_wan + w*loss_wan + beta*build_wan;
-    }
+function renderThresholds(){
+  const tbody = document.querySelector('#tbl tbody');
+  tbody.innerHTML = '';
+  for(let i=0;i<THRESHOLDS_WAN.length;i++){
+    const t = THRESHOLDS_WAN[i];
+    const tr = document.createElement('tr');
+    const td0 = document.createElement('td'); td0.textContent = `${i}→${i+1}`; td0.style.textAlign='center';
+    const td1 = document.createElement('td'); td1.textContent = t.toFixed(6);
+    const td2 = document.createElement('td'); td2.textContent = Math.round(t*SCALE).toLocaleString('zh-TW');
+    tr.appendChild(td0); tr.appendChild(td1); tr.appendChild(td2);
+    tbody.appendChild(tr);
+  }
+}
 
-    function classify(Ewan) {
-      let passed = 0;
-      for (const t of THRESHOLDS_WAN) {
-        if (Ewan >= t) passed++; else break;
-      }
-      const current = passed;
-      const lower = current === 0 ? 0 : THRESHOLDS_WAN[current-1];
-      const next = current < THRESHOLDS_WAN.length ? THRESHOLDS_WAN[current] : null;
-      let progress = null;
-      if (next !== null) {
-        const denom = next - lower;
-        const ratio = denom > 0 ? Math.min(1, Math.max(0, (Ewan - lower) / denom)) : 0;
-        progress = ratio*100;
-      }
-      return { current, lower, next, progress };
-    }
+function calc(){
+  const unit = document.querySelector('#unit').value;
+  const a = parseFloat(document.querySelector('#alpha').value)||0;
+  const w = parseFloat(document.querySelector('#w').value)||0;
+  const b = parseFloat(document.querySelector('#beta').value)||0;
+  const kill = parseFloat(document.querySelector('#kill').value)||0;
+  const loss = parseFloat(document.querySelector('#loss').value)||0;
+  const build = parseFloat(document.querySelector('#build').value)||0;
+  const kw = toWan(kill, unit), lw = toWan(loss, unit), bw = toWan(build, unit);
+  const Ewan = scoreE(a,w,b, kw,lw,bw);
+  const cls = classify(Ewan);
+  document.querySelector('#Ewan').textContent = Ewan.toFixed(6);
+  document.querySelector('#mult').textContent = cls.mult;
+  document.querySelector('#lower').textContent = (cls.lower||0).toFixed(6);
+  document.querySelector('#next').textContent = (cls.next!==null? cls.next.toFixed(6) : '—');
+  const pct = (cls.pct!==null? (cls.pct*100) : null);
+  document.querySelector('#pct').textContent = (pct!==null? pct.toFixed(2)+'%' : '—');
+  document.querySelector('#bar').style.width = (pct!==null? pct.toFixed(2)+'%' : '0%');
+}
 
-    function fmtWan(x) {
-      return (x === null || x === undefined) ? '—' : x.toFixed(6);
-    }
-    function fmtPct(x) {
-      return (x === null || x === undefined) ? '—' : x.toFixed(2) + '%';
-    }
-    function fmtAbsFromWan(x) {
-      if (x === null || x === undefined) return '—';
-      return Math.round(x * SCALE).toLocaleString('zh-Hant-TW');
-    }
+function loadSample(){
+  document.querySelector('#unit').value = 'abs';
+  document.querySelector('#alpha').value = DEFAULT.alpha;
+  document.querySelector('#w').value = DEFAULT.w;
+  document.querySelector('#beta').value = DEFAULT.beta;
+  // 範例取自資料集中 8→9 邊界附近的一筆，便於檢視
+  document.querySelector('#kill').value = 6532434; // 殲敵
+  document.querySelector('#loss').value = 4523397; // 戰損
+  document.querySelector('#build').value = 171552;  // 建設
+  calc();
+}
 
-    function renderThresholds() {
-      const tbody = document.getElementById('thBody');
-      tbody.innerHTML = '';
-      for (let i=0; i<THRESHOLDS_WAN.length; i++) {
-        const tr = document.createElement('tr');
-        const tdA = document.createElement('td'); tdA.textContent = i + '→' + (i+1); tr.appendChild(tdA);
-        const tdB = document.createElement('td'); tdB.textContent = fmtWan(THRESHOLDS_WAN[i]); tr.appendChild(tdB);
-        const tdC = document.createElement('td'); tdC.textContent = fmtAbsFromWan(THRESHOLDS_WAN[i]); tr.appendChild(tdC);
-        tbody.appendChild(tr);
-      }
-    }
+function clearAll(){
+  document.querySelector('#unit').value = 'wan';
+  document.querySelector('#alpha').value = DEFAULT.alpha;
+  document.querySelector('#w').value = DEFAULT.w;
+  document.querySelector('#beta').value = DEFAULT.beta;
+  document.querySelector('#kill').value = 0;
+  document.querySelector('#loss').value = 0;
+  document.querySelector('#build').value = 0;
+  document.querySelector('#Ewan').textContent = '—';
+  document.querySelector('#mult').textContent = '—';
+  document.querySelector('#lower').textContent = '—';
+  document.querySelector('#next').textContent = '—';
+  document.querySelector('#pct').textContent = '—';
+  document.querySelector('#bar').style.width = '0%';
+}
 
-    function calc() {
-      const unit = document.getElementById('unit').value;
-      const alpha = Number(document.getElementById('alpha').value);
-      const w = Number(document.getElementById('w').value);
-      const beta = Number(document.getElementById('beta').value);
-      const kill = toWan(document.getElementById('kill').value, unit);
-      const loss = toWan(document.getElementById('loss').value, unit);
-      const build = toWan(document.getElementById('build').value, unit);
+document.querySelector('#calc').addEventListener('click', calc);
 
-      if ([kill,loss,build].some(v => !isFinite(v))) {
-        alert('請輸入有效的數字'); return;
-      }
-      const Ewan = scoreE(alpha, w, beta, kill, loss, build);
-      const cls = classify(Ewan);
+document.querySelector('#sample').addEventListener('click', loadSample);
 
-      document.getElementById('Ewan').textContent = fmtWan(Ewan);
-      document.getElementById('mult').textContent = cls.current.toString();
-      document.getElementById('lower').textContent = fmtWan(cls.lower);
-      document.getElementById('next').textContent = fmtWan(cls.next);
-      document.getElementById('progress').textContent = fmtPct(cls.progress);
-    }
+document.querySelector('#clear').addEventListener('click', clearAll);
 
-    function loadSample() {
-      document.getElementById('unit').value = 'wan';
-      document.getElementById('alpha').value = DEFAULTS.alpha;
-      document.getElementById('w').value = DEFAULTS.w;
-      document.getElementById('beta').value = DEFAULTS.beta;
-      document.getElementById('kill').value = '406.392';
-      document.getElementById('loss').value = '352.1257';
-      document.getElementById('build').value = '0';
-      calc();
-    }
-
-    function resetAll() {
-      document.getElementById('unit').value = 'wan';
-      document.getElementById('alpha').value = DEFAULTS.alpha;
-      document.getElementById('w').value = DEFAULTS.w;
-      document.getElementById('beta').value = DEFAULTS.beta;
-      document.getElementById('kill').value = '';
-      document.getElementById('loss').value = '';
-      document.getElementById('build').value = '';
-      document.getElementById('Ewan').textContent = '—';
-      document.getElementById('mult').textContent = '—';
-      document.getElementById('lower').textContent = '—';
-      document.getElementById('next').textContent = '—';
-      document.getElementById('progress').textContent = '—';
-    }
-
-    document.getElementById('btnCalc').addEventListener('click', calc);
-    document.getElementById('btnSample').addEventListener('click', loadSample);
-    document.getElementById('btnReset').addEventListener('click', resetAll);
-    renderThresholds();
-  </script>
+renderThresholds();
+</script>
 </body>
 </html>
