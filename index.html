@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v7_full）</title>
+  <title>年度獎勵倍率計算器（v8_perfect）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,10 +27,10 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v7_full）</h1>
+  <h1>年度獎勵倍率計算器（v8_perfect）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
-    <div class="muted">預設權重：α=1、w=3.2、β=15（以「萬」為單位）</div>
+    <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
   </div>
 
   <div class="card">
@@ -46,15 +45,15 @@
       </div>
       <div>
         <label>權重 α（殲敵）</label>
-        <input id="alpha" type="number" step="0.0001" value="1"/>
+        <input id="alpha" type="number" step="0.0001" value="1.50"/>
       </div>
       <div>
         <label>權重 w（戰損）</label>
-        <input id="w" type="number" step="0.0001" value="3.2"/>
+        <input id="w" type="number" step="0.0001" value="3.88"/>
       </div>
       <div>
         <label>權重 β（建設）</label>
-        <input id="beta" type="number" step="0.0001" value="15"/>
+        <input id="beta" type="number" step="0.0001" value="18.30"/>
       </div>
       <div>
         <label>殲敵</label>
@@ -71,10 +70,10 @@
     </div>
     <div class="row" style="margin-top:.75rem">
       <button class="btn primary" id="calc">計算倍數</button>
-      <button class="btn" id="sample9">載入 9 倍範例</button>
-      <button class="btn" id="sample10">載入 10 倍範例</button>
+      <button class="btn" id="sample9">載入 9 倍（最新）</button>
+      <button class="btn" id="sample10">載入 10 倍（最新）</button>
       <button class="btn" id="clear">清空</button>
-      <span class="muted">提示：門檻係以預設權重（1 / 3.2 / 15）推得；若修改權重，倍數判定可能不再保證 100% 吻合。</span>
+      <span class="muted">提示：門檻是以上述最佳權重推得；如修改權重，倍數邊界將隨之變化。</span>
     </div>
   </div>
 
@@ -117,30 +116,18 @@
       </thead>
       <tbody></tbody>
     </table>
-    <div class="muted mono">alpha=1, w=3.2, beta=15</div>
+    <div class="muted mono">alpha=1.50, w=3.88, beta=18.30</div>
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v7_full — 門檻版：v2026-01-04-9to10 — 最後更新時間：2026-01-13 08:52:52 (GMT+08:00)</div>
+    <div class="mono">版本：v8_perfect — 樣本數：75 — 最後更新時間：2026-01-13 23:09:36 (GMT+08:00)</div>
   </footer>
 
 <script>
 const SCALE = 1e4;
-const DEFAULT = { alpha:1, w:3.2, beta:15 };
-// 更新後的 11 個門檻（萬）：0→1, 1→2, …, 10→11
-const THRESHOLDS_WAN = [
-  16.66535,
-  33.46593,
-  83.31532,
-  174.97870,
-  344.12081,
-  631.59837,
-  928.98169,
-  1480.53686,
-  2360.99804,
-  4299.69621,
-  6183.581,
-];
+const DEFAULT = { alpha:1.50, w:3.88, beta:18.30 };
+// 11 個門檻（萬）：0→1, 1→2, …, 10→11（以最佳權重推得）
+const THRESHOLDS_WAN = [21.019225, 43.892327, 107.344998, 227.553820, 445.080909, 816.687183, 1199.938721, 1913.281751, 3052.800956, 5723.996012, 7849.895000];
 
 function toWan(val, unit){ return unit==='abs' ? (val / SCALE) : val; }
 function scoreE(a,w,b, kw, lw, bw){ return a*kw + w*lw + b*bw; }
@@ -193,9 +180,9 @@ function loadSample9(){
   document.querySelector('#alpha').value = DEFAULT.alpha;
   document.querySelector('#w').value = DEFAULT.w;
   document.querySelector('#beta').value = DEFAULT.beta;
-  document.querySelector('#kill').value = 16967399; // 9倍新樣本
-  document.querySelector('#loss').value = 7740115;
-  document.querySelector('#build').value = 72521;
+  document.querySelector('#kill').value = 13253613; // 9倍：最新樣本
+  document.querySelector('#loss').value = 9131548;
+  document.querySelector('#build').value = 105415;
   calc();
 }
 
@@ -204,9 +191,9 @@ function loadSample10(){
   document.querySelector('#alpha').value = DEFAULT.alpha;
   document.querySelector('#w').value = DEFAULT.w;
   document.querySelector('#beta').value = DEFAULT.beta;
-  document.querySelector('#kill').value = 17086476; // 10倍新樣本
-  document.querySelector('#loss').value = 7811266;
-  document.querySelector('#build').value = 72521;
+  document.querySelector('#kill').value = 13293834; // 10倍：最新樣本
+  document.querySelector('#loss').value = 9281380;
+  document.querySelector('#build').value = 105415;
   calc();
 }
 
@@ -227,8 +214,11 @@ function clearAll(){
 }
 
 document.querySelector('#calc').addEventListener('click', calc);
+
 document.querySelector('#sample9').addEventListener('click', loadSample9);
+
 document.querySelector('#sample10').addEventListener('click', loadSample10);
+
 document.querySelector('#clear').addEventListener('click', clearAll);
 
 renderThresholds();
