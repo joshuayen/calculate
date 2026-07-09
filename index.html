@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.3_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.4_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.3_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.4_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,7 +128,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.3_OCR — 樣本數：77 — 最後更新時間：2026-07-09 23:51:26 (GMT+08:00)</div>
+    <div class="mono">版本：v11.4_OCR — 樣本數：77 — 最後更新時間：2026-07-10 01:15:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -144,6 +144,41 @@ let tesseractReady = null;
 let lastCapture = null;
 let hasUploadedCapture = false;
 let hasReportedForCurrentUpload = false;
+const OCR_ROI_PROFILES = [
+  {
+    name: 'wide',
+    aspectMin: 1.7,
+    aspectMax: 2.6,
+    rect: {
+      mult:  [0.38, 0.18, 0.24, 0.09],
+      kill:  [0.13, 0.37, 0.27, 0.12],
+      loss:  [0.39, 0.37, 0.27, 0.12],
+      build: [0.65, 0.37, 0.27, 0.12]
+    }
+  },
+  {
+    name: 'standard',
+    aspectMin: 1.4,
+    aspectMax: 1.8,
+    rect: {
+      mult:  [0.40, 0.20, 0.20, 0.08],
+      kill:  [0.16, 0.40, 0.24, 0.10],
+      loss:  [0.40, 0.40, 0.24, 0.10],
+      build: [0.64, 0.40, 0.24, 0.10]
+    }
+  },
+  {
+    name: 'compact',
+    aspectMin: 1.0,
+    aspectMax: 1.45,
+    rect: {
+      mult:  [0.37, 0.21, 0.26, 0.10],
+      kill:  [0.11, 0.42, 0.30, 0.12],
+      loss:  [0.39, 0.42, 0.30, 0.12],
+      build: [0.67, 0.42, 0.30, 0.12]
+    }
+  }
+];
 
 function setOcrStatus(msg){ document.querySelector('#ocrStatus').textContent = `OCR：${msg}`; }
 
@@ -322,6 +357,23 @@ function findMult(text){
   return m ? parseInt(m[1], 10) : null;
 }
 
+function sanitizeDetectedValue(type, val){
+  if (val===null || val===undefined) return null;
+  const n = Number(val);
+  if (!Number.isFinite(n)) return null;
+  const v = Math.trunc(n);
+  if (type==='kill' || type==='loss'){
+    return (v >= 1000 && v <= 999999999999) ? v : null;
+  }
+  if (type==='build'){
+    return (v >= 100 && v <= 999999999999) ? v : null;
+  }
+  if (type==='mult'){
+    return (v >= 0 && v <= 30) ? v : null;
+  }
+  return null;
+}
+
 function parseDigitToken(text){
   const tokens = (text || '').match(/[0-9]{1,12}/g);
   if (!tokens || tokens.length===0) return null;
@@ -330,17 +382,49 @@ function parseDigitToken(text){
 }
 
 async function recognizeDigitsInRegion(Tesseract, img, ratioRect){
-  const thresholds = [130, 155, 180, 205];
-  for (const th of thresholds){
-    const roi = buildRegionCanvas(img, ratioRect, th, 3);
-    const out = await Tesseract.recognize(roi, 'eng', {
-      tessedit_char_whitelist: '0123456789',
-      tessedit_pageseg_mode: 7
-    });
-    const val = parseDigitToken(out?.data?.text || '');
-    if (val !== null) return val;
+  const thresholds = [150, 185];
+  const shifts = [
+    [0, 0],
+    [-0.012, 0],
+    [0.012, 0]
+  ];
+
+  for (const [dx, dy] of shifts){
+    const rect = shiftRatioRect(ratioRect, dx, dy);
+    for (const th of thresholds){
+      const roi = buildRegionCanvas(img, rect, th, 3);
+      const out = await Tesseract.recognize(roi, 'eng', {
+        tessedit_char_whitelist: '0123456789',
+        tessedit_pageseg_mode: 7
+      });
+      const val = parseDigitToken(out?.data?.text || '');
+      if (val !== null) return val;
+    }
   }
   return null;
+}
+
+function shiftRatioRect(rect, dx, dy){
+  const [x, y, w, h] = rect;
+  const nx = Math.min(1 - w, Math.max(0, x + dx));
+  const ny = Math.min(1 - h, Math.max(0, y + dy));
+  return [nx, ny, w, h];
+}
+
+function getRoiProfilesByAspect(img){
+  const aspect = img.width / Math.max(1, img.height);
+  const matched = OCR_ROI_PROFILES.filter(p => aspect >= p.aspectMin && aspect <= p.aspectMax);
+  if (matched.length > 0) return matched.slice(0, 2);
+
+  // 長寬比落在邊界外時，回退到最接近的版型。
+  return OCR_ROI_PROFILES
+    .slice()
+    .sort((a, b) => {
+      const ca = (a.aspectMin + a.aspectMax) / 2;
+      const cb = (b.aspectMin + b.aspectMax) / 2;
+      return Math.abs(ca - aspect) - Math.abs(cb - aspect);
+    })
+    .slice(0, 2);
 }
 
 async function recognizeFromScreenshot(file){
@@ -360,29 +444,22 @@ async function recognizeFromScreenshot(file){
       }
     });
     const text = normalizeOcrText(result?.data?.text || '');
-    let kill = findStatByKeywords(text, ['殲敵', '歼敌']);
-    let loss = findStatByKeywords(text, ['戰損', '战损']);
-    let build = findStatByKeywords(text, ['建設', '建设']);
-    let mult = findMult(text);
+    let kill = sanitizeDetectedValue('kill', findStatByKeywords(text, ['殲敵', '歼敌']));
+    let loss = sanitizeDetectedValue('loss', findStatByKeywords(text, ['戰損', '战损']));
+    let build = sanitizeDetectedValue('build', findStatByKeywords(text, ['建設', '建设']));
+    let mult = sanitizeDetectedValue('mult', findMult(text));
 
-    // 遊戲截圖字體特效較強時，改用固定區塊做純數字 OCR。
+    // 遊戲截圖字體特效較強或解析度/裁切比例不同時，改用多版型 ROI + 微調做純數字 OCR。
     if (kill===null || loss===null || build===null || mult===null){
-      const roi = {
-        mult:  [0.40, 0.20, 0.20, 0.08],
-        kill:  [0.16, 0.40, 0.24, 0.10],
-        loss:  [0.40, 0.40, 0.24, 0.10],
-        build: [0.64, 0.40, 0.24, 0.10]
-      };
-      if (kill===null) kill = await recognizeDigitsInRegion(Tesseract, img, roi.kill);
-      if (loss===null) loss = await recognizeDigitsInRegion(Tesseract, img, roi.loss);
-      if (build===null) build = await recognizeDigitsInRegion(Tesseract, img, roi.build);
-      if (mult===null) mult = await recognizeDigitsInRegion(Tesseract, img, roi.mult);
+      const profiles = getRoiProfilesByAspect(img);
+      for (const profile of profiles){
+        if (kill===null) kill = sanitizeDetectedValue('kill', await recognizeDigitsInRegion(Tesseract, img, profile.rect.kill));
+        if (loss===null) loss = sanitizeDetectedValue('loss', await recognizeDigitsInRegion(Tesseract, img, profile.rect.loss));
+        if (build===null) build = sanitizeDetectedValue('build', await recognizeDigitsInRegion(Tesseract, img, profile.rect.build));
+        if (mult===null) mult = sanitizeDetectedValue('mult', await recognizeDigitsInRegion(Tesseract, img, profile.rect.mult));
+        if (kill!==null && loss!==null && build!==null && mult!==null) break;
+      }
     }
-
-    if (kill!==null && kill < 1000) kill = null;
-    if (loss!==null && loss < 1000) loss = null;
-    if (build!==null && build < 0) build = null;
-    if (mult!==null && (mult < 0 || mult > 30)) mult = null;
 
     if (kill!==null) document.querySelector('#kill').value = kill;
     if (loss!==null) document.querySelector('#loss').value = loss;
