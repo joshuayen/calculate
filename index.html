@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.2.2_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.2.3_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.2.2_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.2.3_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,7 +128,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.2.2_OCR — 樣本數：77 — 最後更新時間：2026-07-10 03:02:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.2.3_OCR — 樣本數：77 — 最後更新時間：2026-07-10 03:22:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -509,7 +509,36 @@ function findMultFromWords(entries){
     if (Number.isFinite(v) && v >= 1 && v <= 15) return v;
   }
 
-  // 以「倍獎勵 / 倍 / 獎 / 勵」做錨點，抓附近數字。
+  // 1) 以「倍獎勵 / 倍數」做錨點，優先抓同列且緊鄰左側數字。
+  const strictLabels = entries.filter(e => includesAnyToken(e.raw, ['倍獎勵', '倍數']));
+  let strictBest = null;
+  let strictBestScore = Infinity;
+  for (const lb of strictLabels){
+    for (const e of entries){
+      if (e.num === null || e.num === undefined) continue;
+      const n = Math.trunc(e.num);
+      if (n < 1 || n > 15) continue;
+      const len = String(n).length;
+      if (len > 2) continue;
+
+      const verticalOverlap = Math.min(lb.y1, e.y1) - Math.max(lb.y0, e.y0);
+      const minHeight = Math.min(lb.hh, e.hh);
+      const overlapRatio = minHeight > 0 ? (verticalOverlap / minHeight) : 0;
+      if (overlapRatio < 0.35) continue;
+
+      const gapLeft = lb.x0 - e.x1;
+      if (gapLeft < -0.005 || gapLeft > 0.08) continue;
+
+      const score = Math.abs(gapLeft - 0.012) + Math.abs(e.cy - lb.cy) * 1.5;
+      if (score < strictBestScore){
+        strictBestScore = score;
+        strictBest = n;
+      }
+    }
+  }
+  if (strictBest !== null) return strictBest;
+
+  // 2) 寬鬆回退：允許「倍」錨點，但仍限制同列且左側優先。
   const labels = entries.filter(e => includesAnyToken(e.raw, ['倍獎勵', '倍數', '倍']));
   if (labels.length === 0) return null;
   let best = null;
@@ -522,13 +551,13 @@ function findMultFromWords(entries){
       const len = String(n).length;
       if (len > 2) continue;
       const dy = Math.abs(e.cy - lb.cy);
-      if (dy > 0.09) continue;
+      if (dy > 0.055) continue;
 
       const isLeft = e.cx <= lb.cx + 0.02;
-      const dx = isLeft ? (lb.cx - e.cx) : (e.cx - lb.cx) * 1.8;
-      if (dx > 0.2) continue;
+      const dx = isLeft ? (lb.cx - e.cx) : (e.cx - lb.cx) * 3.2;
+      if (dx > 0.13) continue;
 
-      const score = dx * 2.0 + dy + (isLeft ? 0 : 0.25);
+      const score = dx * 2.4 + dy + (isLeft ? 0 : 0.45);
       if (score < bestScore){
         bestScore = score;
         best = n;
@@ -641,13 +670,25 @@ async function recognizeDigitsInRegion(Tesseract, img, ratioRect){
   }
 
   if (candidates.length === 0) return null;
-  candidates.sort((a, b) => {
-    const la = String(a).length;
-    const lb = String(b).length;
+  const freq = new Map();
+  for (const v of candidates){
+    freq.set(v, (freq.get(v) || 0) + 1);
+  }
+
+  const ranked = [...freq.entries()].sort((a, b) => {
+    const [va, ca] = a;
+    const [vb, cb] = b;
+    if (cb !== ca) return cb - ca;
+    const la = String(va).length;
+    const lb = String(vb).length;
     if (lb !== la) return lb - la;
-    return b - a;
+    return va - vb;
   });
-  return candidates[0];
+
+  if (ranked.length > 0 && ranked[0][1] >= 2) return ranked[0][0];
+
+  const sorted = candidates.slice().sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 async function recognizeMultInRegion(Tesseract, img, ratioRect){
@@ -683,11 +724,8 @@ async function recognizeMultInRegion(Tesseract, img, ratioRect){
   const ranked = [...freq.entries()].sort((a, b) => {
     const [va, ca] = a;
     const [vb, cb] = b;
-    const pa = va >= 10 ? 1 : 0;
-    const pb = vb >= 10 ? 1 : 0;
-    if (pb !== pa) return pb - pa;
     if (cb !== ca) return cb - ca;
-    return vb - va;
+    return va - vb;
   });
   return ranked[0][0];
 }
