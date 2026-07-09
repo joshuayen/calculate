@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.2.1_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.2.2_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.2.1_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.2.2_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,7 +128,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.2.1_OCR — 樣本數：77 — 最後更新時間：2026-07-10 02:48:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.2.2_OCR — 樣本數：77 — 最後更新時間：2026-07-10 03:02:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -501,8 +501,16 @@ function findValueNearLabelsFromWords(entries, labelKeywords, minDigits, maxDigi
 }
 
 function findMultFromWords(entries){
+  // 0) 優先直讀「N倍」或「N倍獎勵」整詞。
+  for (const e of entries){
+    const m = String(e.raw || '').match(/([0-9]{1,2})\s*倍(?:獎勵)?/);
+    if (!m) continue;
+    const v = parseInt(m[1], 10);
+    if (Number.isFinite(v) && v >= 1 && v <= 15) return v;
+  }
+
   // 以「倍獎勵 / 倍 / 獎 / 勵」做錨點，抓附近數字。
-  const labels = entries.filter(e => includesAnyToken(e.raw, ['倍獎勵', '倍數', '倍', '獎', '勵']));
+  const labels = entries.filter(e => includesAnyToken(e.raw, ['倍獎勵', '倍數', '倍']));
   if (labels.length === 0) return null;
   let best = null;
   let bestScore = Infinity;
@@ -513,10 +521,14 @@ function findMultFromWords(entries){
       if (n < 1 || n > 15) continue;
       const len = String(n).length;
       if (len > 2) continue;
-      const dx = Math.abs(e.cx - lb.cx);
       const dy = Math.abs(e.cy - lb.cy);
-      if (dx > 0.18 || dy > 0.14) continue;
-      const score = dx * 1.9 + dy;
+      if (dy > 0.09) continue;
+
+      const isLeft = e.cx <= lb.cx + 0.02;
+      const dx = isLeft ? (lb.cx - e.cx) : (e.cx - lb.cx) * 1.8;
+      if (dx > 0.2) continue;
+
+      const score = dx * 2.0 + dy + (isLeft ? 0 : 0.25);
       if (score < bestScore){
         bestScore = score;
         best = n;
@@ -771,9 +783,8 @@ function parseFieldsFromText(text){
 function mergeField(base, incoming, type){
   const a = sanitizeDetectedValue(type, base);
   const b = sanitizeDetectedValue(type, incoming);
-  if (a===null) return b;
-  if (b===null) return a;
-  return b > a ? b : a;
+  if (a!==null) return a;
+  return b;
 }
 
 function countDetectedFields(fields){
@@ -813,10 +824,11 @@ async function recognizeFromScreenshot(file){
     const layoutRaw = parseFieldsFromWordLayout(result?.data || null, rawCanvas.width, rawCanvas.height);
 
     let merged = {
-      kill: mergeField(fullRaw.kill, layoutRaw.kill, 'kill'),
-      loss: mergeField(fullRaw.loss, layoutRaw.loss, 'loss'),
-      build: mergeField(fullRaw.build, layoutRaw.build, 'build'),
-      mult: mergeField(fullRaw.mult, layoutRaw.mult, 'mult')
+      // 以 bbox 解析為主，全文 regex 為備援。
+      kill: mergeField(layoutRaw.kill, fullRaw.kill, 'kill'),
+      loss: mergeField(layoutRaw.loss, fullRaw.loss, 'loss'),
+      build: mergeField(layoutRaw.build, fullRaw.build, 'build'),
+      mult: mergeField(layoutRaw.mult, fullRaw.mult, 'mult')
     };
     if (countDetectedFields(merged) < 3){
       const resultContrast = await Tesseract.recognize(contrastCanvas, 'chi_tra+eng');
