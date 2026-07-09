@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.7_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.8_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.7_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.8_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,7 +128,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.7_OCR — 樣本數：77 — 最後更新時間：2026-07-10 01:55:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.8_OCR — 樣本數：77 — 最後更新時間：2026-07-10 02:08:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -422,15 +422,25 @@ function findLastTokenBeforeKeywords(text, stopKeywords, minDigits, maxDigits, l
 }
 
 function findMult(text){
-  const matches = [...String(text || '').matchAll(/([0-9]{1,2})倍/g)];
-  if (matches.length === 0) return null;
-  let best = null;
-  for (const m of matches){
-    const v = parseInt(m[1], 10);
-    if (!Number.isFinite(v)) continue;
-    if (best===null || v > best) best = v;
+  const src = String(text || '');
+  const candidates = [];
+  const patterns = [
+    /([0-9]{1,2})倍/g,
+    /倍數[^0-9]{0,6}([0-9]{1,2})/g,
+    /([0-9]{1,2})[xX×]/g,
+    /([0-9]{1,2})倍獎/g
+  ];
+  for (const re of patterns){
+    const ms = [...src.matchAll(re)];
+    for (const m of ms){
+      const v = parseInt(m[1], 10);
+      if (!Number.isFinite(v)) continue;
+      if (v < 0 || v > 30) continue;
+      candidates.push(v);
+    }
   }
-  return best;
+  if (candidates.length === 0) return null;
+  return Math.max(...candidates);
 }
 
 function sanitizeDetectedValue(type, val){
@@ -457,6 +467,16 @@ function parseDigitToken(text){
   return parseInt(best, 10);
 }
 
+function parseSmallDigitToken(text){
+  const tokens = (text || '').match(/[0-9]{1,2}/g);
+  if (!tokens || tokens.length===0) return null;
+  const vals = tokens
+    .map(t => parseInt(t, 10))
+    .filter(v => Number.isFinite(v) && v >= 0 && v <= 30);
+  if (vals.length===0) return null;
+  return Math.max(...vals);
+}
+
 async function recognizeDigitsInRegion(Tesseract, img, ratioRect){
   const thresholds = [150, 185];
   const shifts = [
@@ -478,6 +498,31 @@ async function recognizeDigitsInRegion(Tesseract, img, ratioRect){
         tessedit_pageseg_mode: 7
       });
       const val = parseDigitToken(out?.data?.text || '');
+      if (val !== null) return val;
+    }
+  }
+  return null;
+}
+
+async function recognizeMultInRegion(Tesseract, img, ratioRect){
+  const thresholds = [140, 170, 200];
+  const shifts = [
+    [0, 0],
+    [-0.02, 0],
+    [0.02, 0],
+    [0, -0.025],
+    [0, 0.025]
+  ];
+
+  for (const [dx, dy] of shifts){
+    const rect = shiftRatioRect(ratioRect, dx, dy);
+    for (const th of thresholds){
+      const roi = buildRegionCanvas(img, rect, th, 4);
+      const out = await Tesseract.recognize(roi, 'eng', {
+        tessedit_char_whitelist: '0123456789',
+        tessedit_pageseg_mode: 7
+      });
+      const val = parseSmallDigitToken(out?.data?.text || '');
       if (val !== null) return val;
     }
   }
@@ -516,7 +561,7 @@ function parseFieldsFromText(text){
     9
   );
   if (kill === null){
-    kill = findLastTokenBeforeKeywords(text, ['戰損', '战损'], 6, 9, 72);
+    kill = findLastTokenBeforeKeywords(text, ['戰損', '战损'], 6, 9, 220);
   }
   const loss = findStatBySegment(
     text,
@@ -627,7 +672,7 @@ async function recognizeFromScreenshot(file){
         if (kill===null) kill = sanitizeDetectedValue('kill', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.kill));
         if (loss===null) loss = sanitizeDetectedValue('loss', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.loss));
         if (build===null) build = sanitizeDetectedValue('build', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.build));
-        if (mult===null) mult = sanitizeDetectedValue('mult', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.mult));
+        if (mult===null) mult = sanitizeDetectedValue('mult', await recognizeMultInRegion(Tesseract, ocrImg, profile.rect.mult));
         if (kill!==null && loss!==null && build!==null && mult!==null) break;
       }
     }
