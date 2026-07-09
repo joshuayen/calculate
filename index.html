@@ -72,7 +72,7 @@
       <button class="btn primary" id="calc">計算倍數</button>
       <button class="btn" id="ocrUpload">上傳截圖辨識</button>
       <input id="ocrFile" type="file" accept="image/*" style="display:none" />
-      <button class="btn" id="reportIssue">辨識異常或數據回報</button>
+      <button class="btn" id="reportIssue" disabled>辨識異常或數據回報</button>
       <button class="btn" id="clear">清空</button>
       <span class="muted">提示：門檻是以上述最佳權重推得；如修改權重，倍數邊界將隨之變化。</span>
     </div>
@@ -140,6 +140,8 @@ const REMOTE_INGEST_URL = 'https://script.google.com/macros/s/AKfycbzFEWLt_A3gZq
 const THRESHOLDS_WAN = [21.019225, 43.892327, 107.344998, 227.553820, 445.080909, 816.687183, 1199.938721, 1913.281751, 3052.800956, 5723.996012, 9630.450000];
 let tesseractReady = null;
 let lastCapture = null;
+let hasUploadedCapture = false;
+let hasReportedForCurrentUpload = false;
 
 function setOcrStatus(msg){ document.querySelector('#ocrStatus').textContent = `OCR：${msg}`; }
 
@@ -154,16 +156,17 @@ async function toDataUrl(file){
 
 async function postRemoteCapture(record, file, options = {}){
   if (!REMOTE_INGEST_URL) return { ok:false, skipped:true };
-  const imageDataUrl = await toDataUrl(file);
+  const includeImage = options.includeImage !== false;
+  const imageDataUrl = includeImage ? await toDataUrl(file) : '';
 
   const payload = {
     action: options.action || 'capture',
     metadata: record,
-    image: {
+    image: includeImage ? {
       fileName: file.name || `capture-${Date.now()}.png`,
       mimeType: file.type || 'image/png',
       dataUrl: imageDataUrl
-    },
+    } : {},
     reportMessage: options.reportMessage || ''
   };
 
@@ -182,25 +185,34 @@ async function reportCurrentCapture(){
     setOcrStatus('尚無可回報資料，請先上傳並完成辨識');
     return;
   }
+  if (!hasUploadedCapture){
+    setOcrStatus('請先完成一次上傳後再使用回報');
+    return;
+  }
+  if (hasReportedForCurrentUpload){
+    setOcrStatus('此筆資料已回報，請重新上傳後再回報');
+    return;
+  }
   if (!REMOTE_INGEST_URL){
     setOcrStatus('未設定遠端上傳 API，無法送出回報');
     return;
   }
 
-  const message = window.prompt('請填寫回報說明（可留空）', '辨識異常或數據疑似不準確，請協助檢視');
   const reportBtn = document.querySelector('#reportIssue');
   try{
     reportBtn.disabled = true;
     setOcrStatus('回報送出中...');
     await postRemoteCapture(lastCapture.record, lastCapture.file, {
       action: 'report',
-      reportMessage: message || ''
+      reportMessage: '使用者透過回報按鈕提交通知，請檢視稍早上傳資料。',
+      includeImage: false
     });
-    setOcrStatus('已送出回報，作者將檢視此次圖片與數據');
+    hasReportedForCurrentUpload = true;
+    setOcrStatus('已送出回報，已將稍早上傳的資料提供作者確認');
   }catch(err){
     setOcrStatus(`回報失敗：${err?.message || '未知錯誤'}`);
   }finally{
-    reportBtn.disabled = false;
+    reportBtn.disabled = !hasUploadedCapture || hasReportedForCurrentUpload;
   }
 }
 
@@ -384,11 +396,16 @@ async function recognizeFromScreenshot(file){
       };
 
       lastCapture = { record, file };
+      hasReportedForCurrentUpload = false;
 
       if (REMOTE_INGEST_URL){
         try{
           const remote = await postRemoteCapture(record, file);
-          if (remote.ok) record.remoteUploaded = true;
+          if (remote.ok) {
+            record.remoteUploaded = true;
+            hasUploadedCapture = true;
+            document.querySelector('#reportIssue').disabled = false;
+          }
         }catch(remoteErr){
           // 遠端上傳失敗不影響主流程，僅保留在 console 供除錯。
           console.warn('Remote upload failed:', remoteErr);
@@ -477,6 +494,9 @@ function clearAll(){
   document.querySelector('#pct').textContent = '—';
   document.querySelector('#bar').style.width = '0%';
   setOcrStatus('待機');
+  hasUploadedCapture = false;
+  hasReportedForCurrentUpload = false;
+  document.querySelector('#reportIssue').disabled = true;
 }
 
 document.querySelector('#calc').addEventListener('click', calc);
@@ -497,6 +517,7 @@ document.querySelector('#reportIssue').addEventListener('click', reportCurrentCa
 document.querySelector('#clear').addEventListener('click', clearAll);
 
 renderThresholds();
+document.querySelector('#reportIssue').disabled = !hasUploadedCapture || hasReportedForCurrentUpload;
 </script>
 </body>
 </html>
