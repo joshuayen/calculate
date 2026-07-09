@@ -72,12 +72,10 @@
       <button class="btn primary" id="calc">計算倍數</button>
       <button class="btn" id="ocrUpload">上傳截圖辨識</button>
       <input id="ocrFile" type="file" accept="image/*" style="display:none" />
-      <button class="btn" id="exportRecords">匯出辨識紀錄</button>
       <button class="btn" id="clear">清空</button>
       <span class="muted">提示：門檻是以上述最佳權重推得；如修改權重，倍數邊界將隨之變化。</span>
     </div>
     <div id="ocrStatus" class="muted" style="margin-top:.5rem">OCR：待機</div>
-    <div id="storeStatus" class="muted">留存：待機</div>
   </div>
 
   <div class="card">
@@ -133,54 +131,14 @@
 <script>
 const SCALE = 1e4;
 const DEFAULT = { alpha:1.50, w:3.88, beta:18.30 };
-// Google Apps Script Web App URL（留空則只做本機留存）
+// Google Apps Script Web App URL（留空則不做遠端上傳）
 const REMOTE_INGEST_URL = 'https://script.google.com/macros/s/AKfycbzo-F4p0zepc0qVamLMfjEO2nJT2Tr3U0xkgA8POHXNO8Zxkn-oRLOfULzqnGaFkZsZ/exec';
-const DB_NAME = 'calculate_ocr_db';
-const STORE_NAME = 'captures';
 // 11 個門檻（萬）：0→1, 1→2, …, 10→11
 // 10→11 依「剛升上11不久」樣本貼近估計（E_min_11 ~= 9630.46）
 const THRESHOLDS_WAN = [21.019225, 43.892327, 107.344998, 227.553820, 445.080909, 816.687183, 1199.938721, 1913.281751, 3052.800956, 5723.996012, 9630.450000];
 let tesseractReady = null;
 
 function setOcrStatus(msg){ document.querySelector('#ocrStatus').textContent = `OCR：${msg}`; }
-function setStoreStatus(msg){ document.querySelector('#storeStatus').textContent = `留存：${msg}`; }
-
-function openDb(){
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)){
-        const store = db.createObjectStore(STORE_NAME, { keyPath:'id', autoIncrement:true });
-        store.createIndex('createdAt', 'createdAt', { unique:false });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error || new Error('IndexedDB 開啟失敗'));
-  });
-}
-
-async function saveLocalCapture(record, file){
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.add({ ...record, imageBlob:file });
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error || new Error('寫入本機資料庫失敗'));
-  });
-}
-
-async function getAllCaptures(){
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error || new Error('讀取本機資料庫失敗'));
-  });
-}
 
 async function postRemoteCapture(record, file){
   if (!REMOTE_INGEST_URL) return { ok:false, skipped:true };
@@ -208,46 +166,6 @@ async function postRemoteCapture(record, file){
     body: JSON.stringify(payload)
   });
   return { ok:true, skipped:false, unverified:true };
-}
-
-function downloadTextFile(filename, content){
-  const blob = new Blob([content], { type:'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-async function exportCaptureRecords(){
-  try{
-    const rows = await getAllCaptures();
-    if (!rows.length){
-      setStoreStatus('沒有可匯出的本機紀錄');
-      return;
-    }
-    const csv = [
-      'id,createdAt,fileName,kill,loss,build,ocrMult,calcMult,scoreWan,unit,remoteUploaded',
-      ...rows.map(r => [
-        r.id,
-        r.createdAt,
-        r.fileName,
-        r.kill,
-        r.loss,
-        r.build,
-        r.ocrMult ?? '',
-        r.calcMult,
-        r.scoreWan,
-        r.unit,
-        r.remoteUploaded ? '1' : '0'
-      ].join(','))
-    ].join('\n');
-    downloadTextFile(`ocr-records-${Date.now()}.csv`, csv);
-    setStoreStatus(`已匯出 ${rows.length} 筆紀錄（CSV）`);
-  }catch(err){
-    setStoreStatus(`匯出失敗：${err?.message || '未知錯誤'}`);
-  }
 }
 
 function loadTesseract(){
@@ -429,21 +347,15 @@ async function recognizeFromScreenshot(file){
         remoteUploaded: false
       };
 
-      await saveLocalCapture(record, file);
-      try{
-        const remote = await postRemoteCapture(record, file);
-        if (remote.ok) record.remoteUploaded = true;
-      }catch(remoteErr){
-        setStoreStatus(`本機已留存；遠端未上傳：${remoteErr?.message || '未知錯誤'}`);
-      }
-
       if (REMOTE_INGEST_URL){
-        setStoreStatus(record.remoteUploaded ? '本機已留存，遠端已送出（Google Apps Script）' : '本機已留存，遠端上傳失敗');
-      }else{
-        setStoreStatus('本機已留存（未設定遠端上傳 API）');
+        try{
+          const remote = await postRemoteCapture(record, file);
+          if (remote.ok) record.remoteUploaded = true;
+        }catch(remoteErr){
+          // 遠端上傳失敗不影響主流程，僅保留在 console 供除錯。
+          console.warn('Remote upload failed:', remoteErr);
+        }
       }
-    }else{
-      setStoreStatus('欄位不完整，未寫入留存');
     }
 
     const found = [];
@@ -527,7 +439,6 @@ function clearAll(){
   document.querySelector('#pct').textContent = '—';
   document.querySelector('#bar').style.width = '0%';
   setOcrStatus('待機');
-  setStoreStatus('待機');
 }
 
 document.querySelector('#calc').addEventListener('click', calc);
@@ -543,12 +454,9 @@ document.querySelector('#ocrFile').addEventListener('change', (e) => {
   e.target.value = '';
 });
 
-document.querySelector('#exportRecords').addEventListener('click', exportCaptureRecords);
-
 document.querySelector('#clear').addEventListener('click', clearAll);
 
 renderThresholds();
-setStoreStatus('待機');
 </script>
 </body>
 </html>
