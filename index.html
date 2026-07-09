@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.5_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.6_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.5_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.6_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,7 +128,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.5_OCR — 樣本數：77 — 最後更新時間：2026-07-10 01:25:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.6_OCR — 樣本數：77 — 最後更新時間：2026-07-10 01:40:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -371,16 +371,28 @@ function normalizeOcrText(text){
     .replace(/[lI｜]/g, '1');
 }
 
-function findStat(text, keyword){
-  const re = new RegExp(`${keyword}[^0-9]{0,8}([0-9]{1,12})`);
-  const m = text.match(re);
-  return m ? parseInt(m[1], 10) : null;
-}
+function findStatBySegment(text, starts, stops, minDigits, maxDigits){
+  const src = String(text || '');
+  if (!src) return null;
 
-function findStatByKeywords(text, keywords){
-  for (const k of keywords){
-    const v = findStat(text, k);
-    if (v !== null) return v;
+  for (const s of starts){
+    const idx = src.indexOf(s);
+    if (idx < 0) continue;
+    const from = idx + s.length;
+
+    let stopAt = src.length;
+    for (const t of stops){
+      const p = src.indexOf(t, from);
+      if (p >= 0 && p < stopAt) stopAt = p;
+    }
+
+    const seg = src.slice(from, Math.min(src.length, stopAt + 2));
+    const tokens = seg.match(/[0-9]{1,14}/g) || [];
+    for (const tk of tokens){
+      if (tk.length < minDigits || tk.length > maxDigits) continue;
+      const n = parseInt(tk, 10);
+      if (Number.isFinite(n)) return n;
+    }
   }
   return null;
 }
@@ -403,10 +415,10 @@ function sanitizeDetectedValue(type, val){
   if (!Number.isFinite(n)) return null;
   const v = Math.trunc(n);
   if (type==='kill' || type==='loss'){
-    return (v >= 100000 && v <= 999999999999) ? v : null;
+    return (v >= 100000 && v <= 999999999) ? v : null;
   }
   if (type==='build'){
-    return (v >= 10000 && v <= 999999999999) ? v : null;
+    return (v >= 10000 && v <= 99999999) ? v : null;
   }
   if (type==='mult'){
     return (v >= 0 && v <= 30) ? v : null;
@@ -472,10 +484,32 @@ function getRoiProfilesByAspect(img){
 }
 
 function parseFieldsFromText(text){
+  const kill = findStatBySegment(
+    text,
+    ['殲敵', '歼敌'],
+    ['戰損', '战损', '建設', '建设', '倍'],
+    6,
+    9
+  );
+  const loss = findStatBySegment(
+    text,
+    ['戰損', '战损'],
+    ['建設', '建设', '殲敵', '歼敌', '倍'],
+    6,
+    9
+  );
+  const build = findStatBySegment(
+    text,
+    ['建設', '建设'],
+    ['戰損', '战损', '殲敵', '歼敌', '倍'],
+    4,
+    8
+  );
+
   return {
-    kill: sanitizeDetectedValue('kill', findStatByKeywords(text, ['殲敵', '歼敌'])),
-    loss: sanitizeDetectedValue('loss', findStatByKeywords(text, ['戰損', '战损'])),
-    build: sanitizeDetectedValue('build', findStatByKeywords(text, ['建設', '建设'])),
+    kill: sanitizeDetectedValue('kill', kill),
+    loss: sanitizeDetectedValue('loss', loss),
+    build: sanitizeDetectedValue('build', build),
     mult: sanitizeDetectedValue('mult', findMult(text))
   };
 }
@@ -495,6 +529,10 @@ function countDetectedFields(fields){
   if (fields.build!==null) c++;
   if (fields.mult!==null) c++;
   return c;
+}
+
+function isCollapsedSameValue(kill, loss, build){
+  return kill!==null && loss!==null && build!==null && kill===loss && loss===build;
 }
 
 async function recognizeFromScreenshot(file){
@@ -548,6 +586,12 @@ async function recognizeFromScreenshot(file){
     let loss = merged.loss;
     let build = merged.build;
     let mult = merged.mult;
+
+    if (isCollapsedSameValue(kill, loss, build)){
+      kill = null;
+      loss = null;
+      build = null;
+    }
 
     // 遊戲截圖字體特效較強或解析度/裁切比例不同時，改用多版型 ROI + 微調做純數字 OCR。
     if (kill===null || loss===null || build===null || mult===null){
