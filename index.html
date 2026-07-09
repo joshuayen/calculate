@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.9_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.2.1_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.9_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.2.1_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,7 +128,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.9_OCR — 樣本數：77 — 最後更新時間：2026-07-10 02:20:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.2.1_OCR — 樣本數：77 — 最後更新時間：2026-07-10 02:48:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -421,6 +421,130 @@ function findLastTokenBeforeKeywords(text, stopKeywords, minDigits, maxDigits, l
   return null;
 }
 
+function normalizeTokenForOcr(token){
+  return String(token || '')
+    .replace(/[OoＯ]/g, '0')
+    .replace(/[lI｜]/g, '1')
+    .replace(/[\s,，．。:：_]/g, '');
+}
+
+function extractNumberFromToken(token){
+  const t = normalizeTokenForOcr(token);
+  const matches = t.match(/[0-9]{1,12}/g) || [];
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => b.length - a.length || Number(b) - Number(a));
+  const n = parseInt(matches[0], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildWordEntries(ocrData, width, height){
+  const words = (ocrData && Array.isArray(ocrData.words)) ? ocrData.words : [];
+  const safeW = Math.max(1, width || 1);
+  const safeH = Math.max(1, height || 1);
+  const entries = [];
+
+  for (const w of words){
+    const raw = String((w && w.text) || '').trim();
+    if (!raw) continue;
+    const b = w && w.bbox ? w.bbox : null;
+    if (!b) continue;
+    const x0 = Number(b.x0 || 0);
+    const y0 = Number(b.y0 || 0);
+    const x1 = Number(b.x1 || x0);
+    const y1 = Number(b.y1 || y0);
+    if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) continue;
+
+    const cx = ((x0 + x1) / 2) / safeW;
+    const cy = ((y0 + y1) / 2) / safeH;
+    const ww = Math.max(0.001, (x1 - x0) / safeW);
+    const hh = Math.max(0.001, (y1 - y0) / safeH);
+    const num = extractNumberFromToken(raw);
+    entries.push({ raw, x0: x0 / safeW, y0: y0 / safeH, x1: x1 / safeW, y1: y1 / safeH, cx, cy, ww, hh, num });
+  }
+
+  return entries;
+}
+
+function includesAnyToken(text, keywords){
+  const s = String(text || '');
+  return keywords.some(k => s.includes(k));
+}
+
+function findValueNearLabelsFromWords(entries, labelKeywords, minDigits, maxDigits){
+  const labels = entries.filter(e => includesAnyToken(e.raw, labelKeywords));
+  if (labels.length === 0) return null;
+
+  let bestValue = null;
+  let bestScore = Infinity;
+
+  for (const lb of labels){
+    for (const e of entries){
+      if (e.num === null || e.num === undefined) continue;
+      const len = String(Math.trunc(e.num)).length;
+      if (len < minDigits || len > maxDigits) continue;
+      const dx = Math.abs(e.cx - lb.cx);
+      const dy = e.cy - lb.cy;
+      // 同框/同欄位：允許文字下方與少量左右偏移。
+      const inX = dx <= Math.max(0.12, lb.ww * 2.2);
+      const inY = dy >= -0.03 && dy <= 0.24;
+      if (!inX || !inY) continue;
+
+      const score = Math.abs(dy - 0.08) * 2.2 + dx;
+      if (score < bestScore){
+        bestScore = score;
+        bestValue = e.num;
+      }
+    }
+  }
+
+  return bestValue;
+}
+
+function findMultFromWords(entries){
+  // 以「倍獎勵 / 倍 / 獎 / 勵」做錨點，抓附近數字。
+  const labels = entries.filter(e => includesAnyToken(e.raw, ['倍獎勵', '倍數', '倍', '獎', '勵']));
+  if (labels.length === 0) return null;
+  let best = null;
+  let bestScore = Infinity;
+  for (const lb of labels){
+    for (const e of entries){
+      if (e.num === null || e.num === undefined) continue;
+      const n = Math.trunc(e.num);
+      if (n < 1 || n > 15) continue;
+      const len = String(n).length;
+      if (len > 2) continue;
+      const dx = Math.abs(e.cx - lb.cx);
+      const dy = Math.abs(e.cy - lb.cy);
+      if (dx > 0.18 || dy > 0.14) continue;
+      const score = dx * 1.9 + dy;
+      if (score < bestScore){
+        bestScore = score;
+        best = n;
+      }
+    }
+  }
+  return best;
+}
+
+function parseFieldsFromWordLayout(ocrData, width, height){
+  const entries = buildWordEntries(ocrData, width, height);
+  if (entries.length === 0){
+    return { kill:null, loss:null, build:null, mult:null };
+  }
+
+  const kill = findValueNearLabelsFromWords(entries, ['殲敵', '歼敌'], 6, 9);
+  const loss = findValueNearLabelsFromWords(entries, ['戰損', '战损'], 6, 8);
+  const build = findValueNearLabelsFromWords(entries, ['建設', '建设'], 4, 7);
+  const mult = findMultFromWords(entries);
+
+  return {
+    kill: sanitizeDetectedValue('kill', kill),
+    loss: sanitizeDetectedValue('loss', loss),
+    build: sanitizeDetectedValue('build', build),
+    mult: sanitizeDetectedValue('mult', mult)
+  };
+}
+
 function findMult(text){
   const src = String(text || '');
   const candidates = [];
@@ -435,7 +559,7 @@ function findMult(text){
     for (const m of ms){
       const v = parseInt(m[1], 10);
       if (!Number.isFinite(v)) continue;
-      if (v < 0 || v > 30) continue;
+      if (v < 1 || v > 15) continue;
       candidates.push(v);
     }
   }
@@ -449,13 +573,13 @@ function sanitizeDetectedValue(type, val){
   if (!Number.isFinite(n)) return null;
   const v = Math.trunc(n);
   if (type==='kill' || type==='loss'){
-    return (v >= 100000 && v <= 999999999) ? v : null;
+    return (v >= 100000 && v <= 99999999) ? v : null;
   }
   if (type==='build'){
     return (v >= 10000 && v <= 9999999) ? v : null;
   }
   if (type==='mult'){
-    return (v >= 0 && v <= 30) ? v : null;
+    return (v >= 1 && v <= 15) ? v : null;
   }
   return null;
 }
@@ -472,7 +596,7 @@ function parseSmallDigitToken(text){
   if (!tokens || tokens.length===0) return null;
   const vals = tokens
     .map(t => parseInt(t, 10))
-    .filter(v => Number.isFinite(v) && v >= 0 && v <= 30);
+    .filter(v => Number.isFinite(v) && v >= 1 && v <= 15);
   if (vals.length===0) return null;
   return Math.max(...vals);
 }
@@ -626,7 +750,7 @@ function parseFieldsFromText(text){
     ['戰損', '战损'],
     ['建設', '建设', '殲敵', '歼敌', '倍'],
     6,
-    9
+    8
   );
   const build = findStatBySegment(
     text,
@@ -686,8 +810,14 @@ async function recognizeFromScreenshot(file){
     });
     const textRaw = normalizeOcrText(result?.data?.text || '');
     const fullRaw = parseFieldsFromText(textRaw);
+    const layoutRaw = parseFieldsFromWordLayout(result?.data || null, rawCanvas.width, rawCanvas.height);
 
-    let merged = { ...fullRaw };
+    let merged = {
+      kill: mergeField(fullRaw.kill, layoutRaw.kill, 'kill'),
+      loss: mergeField(fullRaw.loss, layoutRaw.loss, 'loss'),
+      build: mergeField(fullRaw.build, layoutRaw.build, 'build'),
+      mult: mergeField(fullRaw.mult, layoutRaw.mult, 'mult')
+    };
     if (countDetectedFields(merged) < 3){
       const resultContrast = await Tesseract.recognize(contrastCanvas, 'chi_tra+eng');
       const textContrast = normalizeOcrText(resultContrast?.data?.text || '');
