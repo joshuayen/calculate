@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.2_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.3_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.2_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.3_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,12 +128,13 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.2_OCR — 樣本數：77 — 最後更新時間：2026-07-09 23:51:26 (GMT+08:00)</div>
+    <div class="mono">版本：v11.3_OCR — 樣本數：77 — 最後更新時間：2026-07-09 23:51:26 (GMT+08:00)</div>
   </footer>
 
 <script>
 const SCALE = 1e4;
 const DEFAULT = { alpha:1.50, w:3.88, beta:18.30 };
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 // Google Apps Script Web App URL（留空則不做遠端上傳）
 const REMOTE_INGEST_URL = 'https://script.google.com/macros/s/AKfycbzFEWLt_A3gZqMIk_VnDpFY-fZonHrM752thHPH3qWq3gm9TcX2I-SlrTCdl3H2eQhu/exec';
 // 11 個門檻（萬）：0→1, 1→2, …, 10→11
@@ -145,6 +146,18 @@ let hasUploadedCapture = false;
 let hasReportedForCurrentUpload = false;
 
 function setOcrStatus(msg){ document.querySelector('#ocrStatus').textContent = `OCR：${msg}`; }
+
+function validateUploadFile(file){
+  if (!file) return { ok:false, message:'未選擇檔案' };
+  const isImage = typeof file.type === 'string' && file.type.toLowerCase().startsWith('image/');
+  if (!isImage){
+    return { ok:false, message:'只允許上傳圖片檔（jpg/png/webp 等）' };
+  }
+  if (file.size > MAX_UPLOAD_BYTES){
+    return { ok:false, message:'圖片大小不可超過 5MB' };
+  }
+  return { ok:true };
+}
 
 async function toDataUrl(file){
   return new Promise((resolve, reject) => {
@@ -382,36 +395,39 @@ async function recognizeFromScreenshot(file){
       cls = calc();
     }
 
-    if (kill!==null && loss!==null && build!==null){
-      const record = {
-        createdAt: new Date().toISOString(),
-        fileName: file.name || 'unknown',
-        kill,
-        loss,
-        build,
-        ocrMult: mult,
-        calcMult: cls ? cls.mult : null,
-        scoreWan: cls ? Number(cls.Ewan.toFixed(6)) : null,
-        unit: 'abs',
-        remoteUploaded: false
-      };
+    const record = {
+      createdAt: new Date().toISOString(),
+      fileName: file.name || 'unknown',
+      kill,
+      loss,
+      build,
+      ocrMult: mult,
+      calcMult: cls ? cls.mult : null,
+      scoreWan: cls ? Number(cls.Ewan.toFixed(6)) : null,
+      unit: 'abs',
+      remoteUploaded: false
+    };
 
-      lastCapture = { record, file };
-      hasReportedForCurrentUpload = false;
+    lastCapture = { record, file };
+    hasReportedForCurrentUpload = false;
 
-      if (REMOTE_INGEST_URL){
-        try{
-          const remote = await postRemoteCapture(record, file);
-          if (remote.ok) {
-            record.remoteUploaded = true;
-            hasUploadedCapture = true;
-            document.querySelector('#reportIssue').disabled = false;
-          }
-        }catch(remoteErr){
-          // 遠端上傳失敗不影響主流程，僅保留在 console 供除錯。
-          console.warn('Remote upload failed:', remoteErr);
+    if (REMOTE_INGEST_URL){
+      try{
+        const remote = await postRemoteCapture(record, file);
+        if (remote.ok) {
+          record.remoteUploaded = true;
+          hasUploadedCapture = true;
+          document.querySelector('#reportIssue').disabled = false;
         }
+      }catch(remoteErr){
+        hasUploadedCapture = false;
+        document.querySelector('#reportIssue').disabled = true;
+        // 遠端上傳失敗不影響主流程，僅保留在 console 供除錯。
+        console.warn('Remote upload failed:', remoteErr);
       }
+    }else{
+      hasUploadedCapture = false;
+      document.querySelector('#reportIssue').disabled = true;
     }
 
     const found = [];
@@ -421,12 +437,45 @@ async function recognizeFromScreenshot(file){
     if (mult!==null) found.push(`畫面倍數=${mult}`);
 
     if (found.length===0){
-      setOcrStatus('未擷取到欄位，請嘗試只截「年度政績」與「x倍獎勵」區塊');
+      setOcrStatus('未擷取到欄位，但原圖已上傳，可直接按「辨識異常或數據回報」');
     }else{
       setOcrStatus(`完成：${found.join('，')}`);
     }
   }catch(err){
-    setOcrStatus(`失敗：${err?.message || '未知錯誤'}`);
+    const fallbackRecord = {
+      createdAt: new Date().toISOString(),
+      fileName: (file && file.name) ? file.name : 'unknown',
+      kill: null,
+      loss: null,
+      build: null,
+      ocrMult: null,
+      calcMult: null,
+      scoreWan: null,
+      unit: 'abs',
+      remoteUploaded: false,
+      ocrError: err?.message || '未知錯誤'
+    };
+    lastCapture = { record: fallbackRecord, file };
+    hasReportedForCurrentUpload = false;
+
+    if (REMOTE_INGEST_URL && file){
+      try{
+        const remote = await postRemoteCapture(fallbackRecord, file);
+        if (remote.ok){
+          hasUploadedCapture = true;
+          document.querySelector('#reportIssue').disabled = false;
+          setOcrStatus('OCR 失敗，但原圖已上傳，可直接按「辨識異常或數據回報」');
+        }else{
+          setOcrStatus(`失敗：${err?.message || '未知錯誤'}`);
+        }
+      }catch(uploadErr){
+        hasUploadedCapture = false;
+        document.querySelector('#reportIssue').disabled = true;
+        setOcrStatus(`失敗：${err?.message || '未知錯誤'}；且上傳失敗`);
+      }
+    }else{
+      setOcrStatus(`失敗：${err?.message || '未知錯誤'}`);
+    }
   }finally{
     uploadBtn.disabled = false;
   }
@@ -509,6 +558,12 @@ document.querySelector('#ocrUpload').addEventListener('click', () => {
 document.querySelector('#ocrFile').addEventListener('change', (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
+  const check = validateUploadFile(file);
+  if (!check.ok){
+    setOcrStatus(check.message);
+    e.target.value = '';
+    return;
+  }
   recognizeFromScreenshot(file);
   e.target.value = '';
 });
