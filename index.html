@@ -73,8 +73,6 @@
       <button class="btn" id="ocrUpload">上傳截圖辨識</button>
       <input id="ocrFile" type="file" accept="image/*" style="display:none" />
       <button class="btn" id="exportRecords">匯出辨識紀錄</button>
-      <button class="btn" id="sample9">載入 9 倍（最新）</button>
-      <button class="btn" id="sample10">載入 10 倍（最新）</button>
       <button class="btn" id="clear">清空</button>
       <span class="muted">提示：門檻是以上述最佳權重推得；如修改權重，倍數邊界將隨之變化。</span>
     </div>
@@ -513,28 +511,6 @@ function calc(){
   return { ...cls, Ewan };
 }
 
-function loadSample9(){
-  document.querySelector('#unit').value = 'abs';
-  document.querySelector('#alpha').value = DEFAULT.alpha;
-  document.querySelector('#w').value = DEFAULT.w;
-  document.querySelector('#beta').value = DEFAULT.beta;
-  document.querySelector('#kill').value = 13253613; // 9倍：最新樣本
-  document.querySelector('#loss').value = 9131548;
-  document.querySelector('#build').value = 105415;
-  calc();
-}
-
-function loadSample10(){
-  document.querySelector('#unit').value = 'abs';
-  document.querySelector('#alpha').value = DEFAULT.alpha;
-  document.querySelector('#w').value = DEFAULT.w;
-  document.querySelector('#beta').value = DEFAULT.beta;
-  document.querySelector('#kill').value = 13293834; // 10倍：最新樣本
-  document.querySelector('#loss').value = 9281380;
-  document.querySelector('#build').value = 105415;
-  calc();
-}
-
 function clearAll(){
   document.querySelector('#unit').value = 'wan';
   document.querySelector('#alpha').value = DEFAULT.alpha;
@@ -568,10 +544,6 @@ document.querySelector('#ocrFile').addEventListener('change', (e) => {
 });
 
 document.querySelector('#exportRecords').addEventListener('click', exportCaptureRecords);
-
-document.querySelector('#sample9').addEventListener('click', loadSample9);
-
-document.querySelector('#sample10').addEventListener('click', loadSample10);
 
 document.querySelector('#clear').addEventListener('click', clearAll);
 
