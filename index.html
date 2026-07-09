@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.4_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.5_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.4_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.5_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -128,7 +128,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.4_OCR — 樣本數：77 — 最後更新時間：2026-07-10 01:15:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.5_OCR — 樣本數：77 — 最後更新時間：2026-07-10 01:25:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -288,14 +288,47 @@ function fileToImage(file){
   });
 }
 
-function buildOcrCanvas(img){
+function downscaleImageForOcr(img, maxSide = 2200){
+  const w = img.width || 0;
+  const h = img.height || 0;
+  const longest = Math.max(w, h);
+  if (!longest || longest <= maxSide) return img;
+
+  const ratio = maxSide / longest;
+  const nw = Math.max(1, Math.round(w * ratio));
+  const nh = Math.max(1, Math.round(h * ratio));
+  const c = document.createElement('canvas');
+  c.width = nw;
+  c.height = nh;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, nw, nh);
+  return c;
+}
+
+function buildOcrCanvas(img, mode = 'binary'){
   const c = document.createElement('canvas');
   c.width = img.width;
   c.height = img.height;
   const ctx = c.getContext('2d');
   ctx.drawImage(img, 0, 0);
+
+  if (mode === 'raw') return c;
+
   const data = ctx.getImageData(0, 0, c.width, c.height);
   const d = data.data;
+
+  if (mode === 'contrast'){
+    for (let i = 0; i < d.length; i += 4){
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.45 + 128));
+      d[i] = contrasted; d[i+1] = contrasted; d[i+2] = contrasted;
+    }
+    ctx.putImageData(data, 0, 0);
+    return c;
+  }
+
   for (let i = 0; i < d.length; i += 4){
     const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
     const boosted = gray > 140 ? 255 : 0;
@@ -353,8 +386,15 @@ function findStatByKeywords(text, keywords){
 }
 
 function findMult(text){
-  const m = text.match(/([0-9]{1,2})倍/);
-  return m ? parseInt(m[1], 10) : null;
+  const matches = [...String(text || '').matchAll(/([0-9]{1,2})倍/g)];
+  if (matches.length === 0) return null;
+  let best = null;
+  for (const m of matches){
+    const v = parseInt(m[1], 10);
+    if (!Number.isFinite(v)) continue;
+    if (best===null || v > best) best = v;
+  }
+  return best;
 }
 
 function sanitizeDetectedValue(type, val){
@@ -363,10 +403,10 @@ function sanitizeDetectedValue(type, val){
   if (!Number.isFinite(n)) return null;
   const v = Math.trunc(n);
   if (type==='kill' || type==='loss'){
-    return (v >= 1000 && v <= 999999999999) ? v : null;
+    return (v >= 100000 && v <= 999999999999) ? v : null;
   }
   if (type==='build'){
-    return (v >= 100 && v <= 999999999999) ? v : null;
+    return (v >= 10000 && v <= 999999999999) ? v : null;
   }
   if (type==='mult'){
     return (v >= 0 && v <= 30) ? v : null;
@@ -386,7 +426,11 @@ async function recognizeDigitsInRegion(Tesseract, img, ratioRect){
   const shifts = [
     [0, 0],
     [-0.012, 0],
-    [0.012, 0]
+    [0.012, 0],
+    [0, -0.02],
+    [0, 0.02],
+    [-0.012, -0.02],
+    [0.012, -0.02]
   ];
 
   for (const [dx, dy] of shifts){
@@ -427,6 +471,32 @@ function getRoiProfilesByAspect(img){
     .slice(0, 2);
 }
 
+function parseFieldsFromText(text){
+  return {
+    kill: sanitizeDetectedValue('kill', findStatByKeywords(text, ['殲敵', '歼敌'])),
+    loss: sanitizeDetectedValue('loss', findStatByKeywords(text, ['戰損', '战损'])),
+    build: sanitizeDetectedValue('build', findStatByKeywords(text, ['建設', '建设'])),
+    mult: sanitizeDetectedValue('mult', findMult(text))
+  };
+}
+
+function mergeField(base, incoming, type){
+  const a = sanitizeDetectedValue(type, base);
+  const b = sanitizeDetectedValue(type, incoming);
+  if (a===null) return b;
+  if (b===null) return a;
+  return b > a ? b : a;
+}
+
+function countDetectedFields(fields){
+  let c = 0;
+  if (fields.kill!==null) c++;
+  if (fields.loss!==null) c++;
+  if (fields.build!==null) c++;
+  if (fields.mult!==null) c++;
+  return c;
+}
+
 async function recognizeFromScreenshot(file){
   const uploadBtn = document.querySelector('#ocrUpload');
   try{
@@ -434,29 +504,59 @@ async function recognizeFromScreenshot(file){
     setOcrStatus('載入 OCR 引擎中...');
     const Tesseract = await loadTesseract();
     const img = await fileToImage(file);
-    const canvas = buildOcrCanvas(img);
+    const ocrImg = downscaleImageForOcr(img, 2200);
+    const rawCanvas = buildOcrCanvas(ocrImg, 'raw');
+    const contrastCanvas = buildOcrCanvas(ocrImg, 'contrast');
+    const binaryCanvas = buildOcrCanvas(ocrImg, 'binary');
     setOcrStatus('辨識中，請稍候...');
-    const result = await Tesseract.recognize(canvas, 'chi_tra+eng', {
+    const result = await Tesseract.recognize(rawCanvas, 'chi_tra+eng', {
       logger: (m) => {
         if (m && m.status === 'recognizing text' && typeof m.progress === 'number'){
           setOcrStatus(`辨識中 ${Math.round(m.progress*100)}%`);
         }
       }
     });
-    const text = normalizeOcrText(result?.data?.text || '');
-    let kill = sanitizeDetectedValue('kill', findStatByKeywords(text, ['殲敵', '歼敌']));
-    let loss = sanitizeDetectedValue('loss', findStatByKeywords(text, ['戰損', '战损']));
-    let build = sanitizeDetectedValue('build', findStatByKeywords(text, ['建設', '建设']));
-    let mult = sanitizeDetectedValue('mult', findMult(text));
+    const textRaw = normalizeOcrText(result?.data?.text || '');
+    const fullRaw = parseFieldsFromText(textRaw);
+
+    let merged = { ...fullRaw };
+    if (countDetectedFields(merged) < 3){
+      const resultContrast = await Tesseract.recognize(contrastCanvas, 'chi_tra+eng');
+      const textContrast = normalizeOcrText(resultContrast?.data?.text || '');
+      const fullContrast = parseFieldsFromText(textContrast);
+      merged = {
+        kill: mergeField(merged.kill, fullContrast.kill, 'kill'),
+        loss: mergeField(merged.loss, fullContrast.loss, 'loss'),
+        build: mergeField(merged.build, fullContrast.build, 'build'),
+        mult: mergeField(merged.mult, fullContrast.mult, 'mult')
+      };
+    }
+
+    if (countDetectedFields(merged) < 3){
+      const resultBinary = await Tesseract.recognize(binaryCanvas, 'chi_tra+eng');
+      const textBinary = normalizeOcrText(resultBinary?.data?.text || '');
+      const fullBinary = parseFieldsFromText(textBinary);
+      merged = {
+        kill: mergeField(merged.kill, fullBinary.kill, 'kill'),
+        loss: mergeField(merged.loss, fullBinary.loss, 'loss'),
+        build: mergeField(merged.build, fullBinary.build, 'build'),
+        mult: mergeField(merged.mult, fullBinary.mult, 'mult')
+      };
+    }
+
+    let kill = merged.kill;
+    let loss = merged.loss;
+    let build = merged.build;
+    let mult = merged.mult;
 
     // 遊戲截圖字體特效較強或解析度/裁切比例不同時，改用多版型 ROI + 微調做純數字 OCR。
     if (kill===null || loss===null || build===null || mult===null){
-      const profiles = getRoiProfilesByAspect(img);
+      const profiles = getRoiProfilesByAspect(ocrImg);
       for (const profile of profiles){
-        if (kill===null) kill = sanitizeDetectedValue('kill', await recognizeDigitsInRegion(Tesseract, img, profile.rect.kill));
-        if (loss===null) loss = sanitizeDetectedValue('loss', await recognizeDigitsInRegion(Tesseract, img, profile.rect.loss));
-        if (build===null) build = sanitizeDetectedValue('build', await recognizeDigitsInRegion(Tesseract, img, profile.rect.build));
-        if (mult===null) mult = sanitizeDetectedValue('mult', await recognizeDigitsInRegion(Tesseract, img, profile.rect.mult));
+        if (kill===null) kill = sanitizeDetectedValue('kill', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.kill));
+        if (loss===null) loss = sanitizeDetectedValue('loss', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.loss));
+        if (build===null) build = sanitizeDetectedValue('build', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.build));
+        if (mult===null) mult = sanitizeDetectedValue('mult', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.mult));
         if (kill!==null && loss!==null && build!==null && mult!==null) break;
       }
     }
