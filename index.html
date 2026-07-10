@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.2.4_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.3）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.2.4_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.3）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -71,15 +71,12 @@
     </div>
     <div class="row" style="margin-top:.75rem">
       <button class="btn primary" id="calc">計算倍數</button>
-      <button class="btn" id="ocrUpload">上傳截圖辨識</button>
-      <input id="ocrFile" type="file" accept="image/*" style="display:none" />
-      <button class="btn" id="reportOnlyUpload">純回報不辨識</button>
+      <button class="btn" id="reportOnlyUpload">上傳截圖回報數據</button>
       <input id="reportOnlyFile" type="file" accept="image/*" style="display:none" />
-      <button class="btn" id="reportIssue" disabled>辨識異常或數據回報</button>
       <button class="btn" id="clear">清空</button>
       <span class="muted">提示：門檻是以上述最佳權重推得；如修改權重，倍數邊界將隨之變化。</span>
     </div>
-    <div class="muted">說明：通知作者檢視此次上傳的圖片與數據，進行後續更新維護。</div>
+    <div class="muted">說明：可直接上傳截圖供作者檢視與後續維護。</div>
     <div id="ocrStatus" class="muted" style="margin-top:.5rem">OCR：待機</div>
   </div>
 
@@ -93,10 +90,6 @@
       <div>
         <div class="muted">目前倍數</div>
         <div id="mult" class="mono">—</div>
-      </div>
-      <div>
-        <div class="muted">畫面辨識倍數（OCR）</div>
-        <div id="ocrMult" class="mono">—</div>
       </div>
       <div>
         <div class="muted">當前倍數下界（萬）</div>
@@ -130,7 +123,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.2.4_OCR — 樣本數：77 — 最後更新時間：2026-07-10 03:36:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.3 — 樣本數：77 — 最後更新時間：2026-07-10 04:02:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -142,45 +135,6 @@ const REMOTE_INGEST_URL = 'https://script.google.com/macros/s/AKfycbzFEWLt_A3gZq
 // 11 個門檻（萬）：0→1, 1→2, …, 10→11
 // 10→11 依「剛升上11不久」樣本貼近估計（E_min_11 ~= 9630.46）
 const THRESHOLDS_WAN = [21.019225, 43.892327, 107.344998, 227.553820, 445.080909, 816.687183, 1199.938721, 1913.281751, 3052.800956, 5723.996012, 9630.450000];
-let tesseractReady = null;
-let lastCapture = null;
-let hasUploadedCapture = false;
-let hasReportedForCurrentUpload = false;
-const OCR_ROI_PROFILES = [
-  {
-    name: 'wide',
-    aspectMin: 1.7,
-    aspectMax: 2.6,
-    rect: {
-      mult:  [0.38, 0.18, 0.24, 0.09],
-      kill:  [0.13, 0.37, 0.27, 0.12],
-      loss:  [0.39, 0.37, 0.27, 0.12],
-      build: [0.65, 0.37, 0.27, 0.12]
-    }
-  },
-  {
-    name: 'standard',
-    aspectMin: 1.4,
-    aspectMax: 1.8,
-    rect: {
-      mult:  [0.40, 0.20, 0.20, 0.08],
-      kill:  [0.16, 0.40, 0.24, 0.10],
-      loss:  [0.40, 0.40, 0.24, 0.10],
-      build: [0.64, 0.40, 0.24, 0.10]
-    }
-  },
-  {
-    name: 'compact',
-    aspectMin: 1.0,
-    aspectMax: 1.45,
-    rect: {
-      mult:  [0.37, 0.21, 0.26, 0.10],
-      kill:  [0.11, 0.42, 0.30, 0.12],
-      loss:  [0.39, 0.42, 0.30, 0.12],
-      build: [0.67, 0.42, 0.30, 0.12]
-    }
-  }
-];
 
 function setOcrStatus(msg){ document.querySelector('#ocrStatus').textContent = `OCR：${msg}`; }
 
@@ -231,42 +185,6 @@ async function postRemoteCapture(record, file, options = {}){
   return { ok:true, skipped:false, unverified:true };
 }
 
-async function reportCurrentCapture(){
-  if (!lastCapture || !lastCapture.record || !lastCapture.file){
-    setOcrStatus('尚無可回報資料，請先上傳並完成辨識');
-    return;
-  }
-  if (!hasUploadedCapture){
-    setOcrStatus('請先完成一次上傳後再使用回報');
-    return;
-  }
-  if (hasReportedForCurrentUpload){
-    setOcrStatus('此筆資料已回報，請重新上傳後再回報');
-    return;
-  }
-  if (!REMOTE_INGEST_URL){
-    setOcrStatus('未設定遠端上傳 API，無法送出回報');
-    return;
-  }
-
-  const reportBtn = document.querySelector('#reportIssue');
-  try{
-    reportBtn.disabled = true;
-    setOcrStatus('回報送出中...');
-    await postRemoteCapture(lastCapture.record, lastCapture.file, {
-      action: 'report',
-      reportMessage: '使用者透過回報按鈕提交通知，請檢視稍早上傳資料。',
-      includeImage: false
-    });
-    hasReportedForCurrentUpload = true;
-    setOcrStatus('已送出回報，已將稍早上傳的資料提供作者確認');
-  }catch(err){
-    setOcrStatus(`回報失敗：${err?.message || '未知錯誤'}`);
-  }finally{
-    reportBtn.disabled = !hasUploadedCapture || hasReportedForCurrentUpload;
-  }
-}
-
 async function uploadReportOnly(file){
   const btn = document.querySelector('#reportOnlyUpload');
   const check = validateUploadFile(file);
@@ -290,7 +208,6 @@ async function uploadReportOnly(file){
       kill: null,
       loss: null,
       build: null,
-      ocrMult: null,
       calcMult: null,
       scoreWan: null,
       unit: 'abs',
@@ -313,753 +230,6 @@ async function uploadReportOnly(file){
     setOcrStatus(`純回報上傳失敗：${err?.message || '未知錯誤'}`);
   }finally{
     btn.disabled = false;
-  }
-}
-
-function loadTesseract(){
-  if (window.Tesseract) return Promise.resolve(window.Tesseract);
-  if (tesseractReady) return tesseractReady;
-  tesseractReady = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    s.onload = () => resolve(window.Tesseract);
-    s.onerror = () => reject(new Error('Tesseract.js 載入失敗'));
-    document.head.appendChild(s);
-  });
-  return tesseractReady;
-}
-
-function fileToImage(file){
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('圖片讀取失敗')); };
-    img.src = url;
-  });
-}
-
-function downscaleImageForOcr(img, maxSide = 2200){
-  const w = img.width || 0;
-  const h = img.height || 0;
-  const longest = Math.max(w, h);
-  if (!longest || longest <= maxSide) return img;
-
-  const ratio = maxSide / longest;
-  const nw = Math.max(1, Math.round(w * ratio));
-  const nh = Math.max(1, Math.round(h * ratio));
-  const c = document.createElement('canvas');
-  c.width = nw;
-  c.height = nh;
-  const ctx = c.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, nw, nh);
-  return c;
-}
-
-function buildOcrCanvas(img, mode = 'binary'){
-  const c = document.createElement('canvas');
-  c.width = img.width;
-  c.height = img.height;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-
-  if (mode === 'raw') return c;
-
-  const data = ctx.getImageData(0, 0, c.width, c.height);
-  const d = data.data;
-
-  if (mode === 'contrast'){
-    for (let i = 0; i < d.length; i += 4){
-      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-      const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.45 + 128));
-      d[i] = contrasted; d[i+1] = contrasted; d[i+2] = contrasted;
-    }
-    ctx.putImageData(data, 0, 0);
-    return c;
-  }
-
-  for (let i = 0; i < d.length; i += 4){
-    const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    const boosted = gray > 140 ? 255 : 0;
-    d[i] = boosted; d[i+1] = boosted; d[i+2] = boosted;
-  }
-  ctx.putImageData(data, 0, 0);
-  return c;
-}
-
-function buildRegionCanvas(img, ratioRect, threshold = 155, scale = 3){
-  const [rx, ry, rw, rh] = ratioRect;
-  const sx = Math.max(0, Math.floor(img.width * rx));
-  const sy = Math.max(0, Math.floor(img.height * ry));
-  const sw = Math.max(1, Math.floor(img.width * rw));
-  const sh = Math.max(1, Math.floor(img.height * rh));
-
-  const c = document.createElement('canvas');
-  c.width = sw * scale;
-  c.height = sh * scale;
-  const ctx = c.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
-
-  const data = ctx.getImageData(0, 0, c.width, c.height);
-  const d = data.data;
-  for (let i = 0; i < d.length; i += 4){
-    const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    const bw = gray > threshold ? 255 : 0;
-    d[i] = bw; d[i+1] = bw; d[i+2] = bw;
-  }
-  ctx.putImageData(data, 0, 0);
-  return c;
-}
-
-function normalizeOcrText(text){
-  return text
-    .replace(/[\s\r\n]+/g, '|')
-    .replace(/[，,．。:：]/g, '|')
-    .replace(/[OoＯ]/g, '0')
-    .replace(/[lI｜]/g, '1')
-    .replace(/[|]{2,}/g, '|');
-}
-
-function findStatBySegment(text, starts, stops, minDigits, maxDigits){
-  const src = String(text || '');
-  if (!src) return null;
-
-  for (const s of starts){
-    const idx = src.indexOf(s);
-    if (idx < 0) continue;
-    const from = idx + s.length;
-
-    let stopAt = src.length;
-    for (const t of stops){
-      const p = src.indexOf(t, from);
-      if (p >= 0 && p < stopAt) stopAt = p;
-    }
-
-    const seg = src.slice(from, stopAt);
-    const tokens = seg.match(/[0-9]{1,14}/g) || [];
-    for (const tk of tokens){
-      if (tk.length < minDigits || tk.length > maxDigits) continue;
-      const n = parseInt(tk, 10);
-      if (Number.isFinite(n)) return n;
-    }
-  }
-  return null;
-}
-
-function findLastTokenBeforeKeywords(text, stopKeywords, minDigits, maxDigits, lookback = 64){
-  const src = String(text || '');
-  if (!src) return null;
-
-  let stopAt = -1;
-  for (const kw of stopKeywords){
-    const p = src.indexOf(kw);
-    if (p >= 0 && (stopAt < 0 || p < stopAt)) stopAt = p;
-  }
-  if (stopAt < 0) return null;
-
-  const from = Math.max(0, stopAt - lookback);
-  const seg = src.slice(from, stopAt);
-  const tokens = seg.match(/[0-9]{1,14}/g) || [];
-  for (let i = tokens.length - 1; i >= 0; i--){
-    const tk = tokens[i];
-    if (tk.length < minDigits || tk.length > maxDigits) continue;
-    const n = parseInt(tk, 10);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
-}
-
-function normalizeTokenForOcr(token){
-  return String(token || '')
-    .replace(/[OoＯ]/g, '0')
-    .replace(/[lI｜]/g, '1')
-    .replace(/[\s,，．。:：_]/g, '');
-}
-
-function extractNumberFromToken(token){
-  const t = normalizeTokenForOcr(token);
-  const matches = t.match(/[0-9]{1,12}/g) || [];
-  if (matches.length === 0) return null;
-  matches.sort((a, b) => b.length - a.length || Number(b) - Number(a));
-  const n = parseInt(matches[0], 10);
-  return Number.isFinite(n) ? n : null;
-}
-
-function buildWordEntries(ocrData, width, height){
-  const words = (ocrData && Array.isArray(ocrData.words)) ? ocrData.words : [];
-  const safeW = Math.max(1, width || 1);
-  const safeH = Math.max(1, height || 1);
-  const entries = [];
-
-  for (const w of words){
-    const raw = String((w && w.text) || '').trim();
-    if (!raw) continue;
-    const b = w && w.bbox ? w.bbox : null;
-    if (!b) continue;
-    const x0 = Number(b.x0 || 0);
-    const y0 = Number(b.y0 || 0);
-    const x1 = Number(b.x1 || x0);
-    const y1 = Number(b.y1 || y0);
-    if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) continue;
-
-    const cx = ((x0 + x1) / 2) / safeW;
-    const cy = ((y0 + y1) / 2) / safeH;
-    const ww = Math.max(0.001, (x1 - x0) / safeW);
-    const hh = Math.max(0.001, (y1 - y0) / safeH);
-    const num = extractNumberFromToken(raw);
-    entries.push({ raw, x0: x0 / safeW, y0: y0 / safeH, x1: x1 / safeW, y1: y1 / safeH, cx, cy, ww, hh, num });
-  }
-
-  return entries;
-}
-
-function includesAnyToken(text, keywords){
-  const s = String(text || '');
-  return keywords.some(k => s.includes(k));
-}
-
-function findValueNearLabelsFromWords(entries, labelKeywords, minDigits, maxDigits){
-  const labels = entries.filter(e => includesAnyToken(e.raw, labelKeywords));
-  if (labels.length === 0) return null;
-
-  let bestValue = null;
-  let bestScore = Infinity;
-
-  for (const lb of labels){
-    for (const e of entries){
-      if (e.num === null || e.num === undefined) continue;
-      const len = String(Math.trunc(e.num)).length;
-      if (len < minDigits || len > maxDigits) continue;
-      const dx = Math.abs(e.cx - lb.cx);
-      const dy = e.cy - lb.cy;
-      // 同框/同欄位：允許文字下方與少量左右偏移。
-      const inX = dx <= Math.max(0.12, lb.ww * 2.2);
-      const inY = dy >= -0.03 && dy <= 0.24;
-      if (!inX || !inY) continue;
-
-      const score = Math.abs(dy - 0.08) * 2.2 + dx;
-      if (score < bestScore){
-        bestScore = score;
-        bestValue = e.num;
-      }
-    }
-  }
-
-  return bestValue;
-}
-
-function findMultFromWords(entries){
-  // 0) 優先直讀「N倍」或「N倍獎勵」整詞。
-  for (const e of entries){
-    const m = String(e.raw || '').match(/([0-9]{1,2})\s*倍(?:獎勵)?/);
-    if (!m) continue;
-    const v = parseInt(m[1], 10);
-    if (Number.isFinite(v) && v >= 1 && v <= 15) return v;
-  }
-
-  // 1) 以「倍獎勵 / 倍數」做錨點，優先抓同列且緊鄰左側數字。
-  const strictLabels = entries.filter(e => includesAnyToken(e.raw, ['倍獎勵', '倍數']));
-  let strictBest = null;
-  let strictBestScore = Infinity;
-  for (const lb of strictLabels){
-    for (const e of entries){
-      if (e.num === null || e.num === undefined) continue;
-      const n = Math.trunc(e.num);
-      if (n < 1 || n > 15) continue;
-      const len = String(n).length;
-      if (len > 2) continue;
-
-      const verticalOverlap = Math.min(lb.y1, e.y1) - Math.max(lb.y0, e.y0);
-      const minHeight = Math.min(lb.hh, e.hh);
-      const overlapRatio = minHeight > 0 ? (verticalOverlap / minHeight) : 0;
-      if (overlapRatio < 0.35) continue;
-
-      const gapLeft = lb.x0 - e.x1;
-      if (gapLeft < -0.005 || gapLeft > 0.08) continue;
-
-      const score = Math.abs(gapLeft - 0.012) + Math.abs(e.cy - lb.cy) * 1.5;
-      if (score < strictBestScore){
-        strictBestScore = score;
-        strictBest = n;
-      }
-    }
-  }
-  if (strictBest !== null) return strictBest;
-
-  // 2) 寬鬆回退：允許「倍」錨點，但仍限制同列且左側優先。
-  const labels = entries.filter(e => includesAnyToken(e.raw, ['倍獎勵', '倍數', '倍']));
-  if (labels.length === 0) return null;
-  let best = null;
-  let bestScore = Infinity;
-  for (const lb of labels){
-    for (const e of entries){
-      if (e.num === null || e.num === undefined) continue;
-      const n = Math.trunc(e.num);
-      if (n < 1 || n > 15) continue;
-      const len = String(n).length;
-      if (len > 2) continue;
-      const dy = Math.abs(e.cy - lb.cy);
-      if (dy > 0.055) continue;
-
-      const isLeft = e.cx <= lb.cx + 0.02;
-      const dx = isLeft ? (lb.cx - e.cx) : (e.cx - lb.cx) * 3.2;
-      if (dx > 0.13) continue;
-
-      const score = dx * 2.4 + dy + (isLeft ? 0 : 0.45);
-      if (score < bestScore){
-        bestScore = score;
-        best = n;
-      }
-    }
-  }
-  return best;
-}
-
-function parseFieldsFromWordLayout(ocrData, width, height){
-  const entries = buildWordEntries(ocrData, width, height);
-  if (entries.length === 0){
-    return { kill:null, loss:null, build:null, mult:null };
-  }
-
-  const kill = findValueNearLabelsFromWords(entries, ['殲敵', '歼敌'], 6, 9);
-  const loss = findValueNearLabelsFromWords(entries, ['戰損', '战损'], 6, 8);
-  const build = findValueNearLabelsFromWords(entries, ['建設', '建设'], 4, 7);
-  const mult = findMultFromWords(entries);
-
-  return {
-    kill: sanitizeDetectedValue('kill', kill),
-    loss: sanitizeDetectedValue('loss', loss),
-    build: sanitizeDetectedValue('build', build),
-    mult: sanitizeDetectedValue('mult', mult)
-  };
-}
-
-function findMult(text){
-  const src = String(text || '');
-  const candidates = [];
-  const patterns = [
-    /([0-9]{1,2})倍/g,
-    /倍數[^0-9]{0,6}([0-9]{1,2})/g,
-    /([0-9]{1,2})[xX×]/g,
-    /([0-9]{1,2})倍獎/g
-  ];
-  for (const re of patterns){
-    const ms = [...src.matchAll(re)];
-    for (const m of ms){
-      const v = parseInt(m[1], 10);
-      if (!Number.isFinite(v)) continue;
-      if (v < 1 || v > 15) continue;
-      candidates.push(v);
-    }
-  }
-  if (candidates.length === 0) return null;
-  return Math.max(...candidates);
-}
-
-function sanitizeDetectedValue(type, val){
-  if (val===null || val===undefined) return null;
-  const n = Number(val);
-  if (!Number.isFinite(n)) return null;
-  const v = Math.trunc(n);
-  if (type==='kill' || type==='loss'){
-    return (v >= 100000 && v <= 99999999) ? v : null;
-  }
-  if (type==='build'){
-    return (v >= 10000 && v <= 9999999) ? v : null;
-  }
-  if (type==='mult'){
-    return (v >= 1 && v <= 15) ? v : null;
-  }
-  return null;
-}
-
-function parseDigitToken(text){
-  const tokens = (text || '').match(/[0-9]{1,12}/g);
-  if (!tokens || tokens.length===0) return null;
-  const best = tokens.sort((a,b) => b.length - a.length)[0];
-  return parseInt(best, 10);
-}
-
-function parseSmallDigitToken(text){
-  const tokens = (text || '').match(/[0-9]{1,2}/g);
-  if (!tokens || tokens.length===0) return null;
-  const vals = tokens
-    .map(t => parseInt(t, 10))
-    .filter(v => Number.isFinite(v) && v >= 1 && v <= 15);
-  if (vals.length===0) return null;
-  return Math.max(...vals);
-}
-
-async function recognizeDigitsInRegion(Tesseract, img, ratioRect){
-  const thresholds = [150, 185];
-  const shifts = [
-    [0, 0],
-    [-0.012, 0],
-    [0.012, 0],
-    [0, -0.02],
-    [0, 0.02],
-    [-0.012, -0.02],
-    [0.012, -0.02]
-  ];
-
-  const candidates = [];
-
-  for (const [dx, dy] of shifts){
-    const rect = shiftRatioRect(ratioRect, dx, dy);
-    for (const th of thresholds){
-      const roi = buildRegionCanvas(img, rect, th, 3);
-      const out = await Tesseract.recognize(roi, 'eng', {
-        tessedit_char_whitelist: '0123456789',
-        tessedit_pageseg_mode: 7
-      });
-      const val = parseDigitToken(out?.data?.text || '');
-      if (val !== null) candidates.push(val);
-    }
-  }
-
-  if (candidates.length === 0) return null;
-  const freq = new Map();
-  for (const v of candidates){
-    freq.set(v, (freq.get(v) || 0) + 1);
-  }
-
-  const ranked = [...freq.entries()].sort((a, b) => {
-    const [va, ca] = a;
-    const [vb, cb] = b;
-    if (cb !== ca) return cb - ca;
-    const la = String(va).length;
-    const lb = String(vb).length;
-    if (lb !== la) return lb - la;
-    return va - vb;
-  });
-
-  if (ranked.length > 0 && ranked[0][1] >= 2) return ranked[0][0];
-
-  const sorted = candidates.slice().sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
-}
-
-async function recognizeMultInRegion(Tesseract, img, ratioRect){
-  const thresholds = [140, 170, 200];
-  const shifts = [
-    [0, 0],
-    [-0.02, 0],
-    [0.02, 0],
-    [0, -0.025],
-    [0, 0.025]
-  ];
-
-  const candidates = [];
-
-  for (const [dx, dy] of shifts){
-    const rect = shiftRatioRect(ratioRect, dx, dy);
-    for (const th of thresholds){
-      const roi = buildRegionCanvas(img, rect, th, 4);
-      const out = await Tesseract.recognize(roi, 'eng', {
-        tessedit_char_whitelist: '0123456789',
-        tessedit_pageseg_mode: 7
-      });
-      const val = parseSmallDigitToken(out?.data?.text || '');
-      if (val !== null) candidates.push(val);
-    }
-  }
-
-  if (candidates.length === 0) return null;
-  const freq = new Map();
-  for (const v of candidates){
-    freq.set(v, (freq.get(v) || 0) + 1);
-  }
-  const ranked = [...freq.entries()].sort((a, b) => {
-    const [va, ca] = a;
-    const [vb, cb] = b;
-    if (cb !== ca) return cb - ca;
-    return va - vb;
-  });
-  return ranked[0][0];
-}
-
-function expandRatioRect(rect, xPad, yPad){
-  const [x, y, w, h] = rect;
-  const nx = Math.max(0, x - xPad);
-  const ny = Math.max(0, y - yPad);
-  const nr = Math.min(1, x + w + xPad);
-  const nb = Math.min(1, y + h + yPad);
-  return [nx, ny, Math.max(0.01, nr - nx), Math.max(0.01, nb - ny)];
-}
-
-async function recognizeKillInRegion(Tesseract, img, baseRect){
-  const candidates = [
-    baseRect,
-    expandRatioRect(baseRect, 0.03, 0.015),
-    shiftRatioRect(expandRatioRect(baseRect, 0.04, 0.02), -0.02, 0),
-    shiftRatioRect(expandRatioRect(baseRect, 0.04, 0.02), 0.02, 0),
-    shiftRatioRect(expandRatioRect(baseRect, 0.05, 0.03), 0, -0.02),
-    shiftRatioRect(expandRatioRect(baseRect, 0.05, 0.03), 0, 0.02)
-  ];
-
-  let best = null;
-  for (const rect of candidates){
-    const v = await recognizeDigitsInRegion(Tesseract, img, rect);
-    const sv = sanitizeDetectedValue('kill', v);
-    if (sv === null) continue;
-    if (best === null || String(sv).length > String(best).length || sv > best){
-      best = sv;
-    }
-  }
-  return best;
-}
-
-function shiftRatioRect(rect, dx, dy){
-  const [x, y, w, h] = rect;
-  const nx = Math.min(1 - w, Math.max(0, x + dx));
-  const ny = Math.min(1 - h, Math.max(0, y + dy));
-  return [nx, ny, w, h];
-}
-
-function getRoiProfilesByAspect(img){
-  const aspect = img.width / Math.max(1, img.height);
-  const matched = OCR_ROI_PROFILES.filter(p => aspect >= p.aspectMin && aspect <= p.aspectMax);
-  if (matched.length > 0) return matched.slice(0, 2);
-
-  // 長寬比落在邊界外時，回退到最接近的版型。
-  return OCR_ROI_PROFILES
-    .slice()
-    .sort((a, b) => {
-      const ca = (a.aspectMin + a.aspectMax) / 2;
-      const cb = (b.aspectMin + b.aspectMax) / 2;
-      return Math.abs(ca - aspect) - Math.abs(cb - aspect);
-    })
-    .slice(0, 2);
-}
-
-function parseFieldsFromText(text){
-  let kill = findStatBySegment(
-    text,
-    ['殲敵', '歼敌'],
-    ['戰損', '战损', '建設', '建设', '倍'],
-    6,
-    9
-  );
-  if (kill === null){
-    kill = findLastTokenBeforeKeywords(text, ['戰損', '战损'], 6, 9, 220);
-  }
-  const loss = findStatBySegment(
-    text,
-    ['戰損', '战损'],
-    ['建設', '建设', '殲敵', '歼敌', '倍'],
-    6,
-    8
-  );
-  const build = findStatBySegment(
-    text,
-    ['建設', '建设'],
-    ['戰損', '战损', '殲敵', '歼敌', '倍'],
-    4,
-    7
-  );
-
-  return {
-    kill: sanitizeDetectedValue('kill', kill),
-    loss: sanitizeDetectedValue('loss', loss),
-    build: sanitizeDetectedValue('build', build),
-    mult: sanitizeDetectedValue('mult', findMult(text))
-  };
-}
-
-function mergeField(base, incoming, type){
-  const a = sanitizeDetectedValue(type, base);
-  const b = sanitizeDetectedValue(type, incoming);
-  if (a!==null) return a;
-  return b;
-}
-
-function countDetectedFields(fields){
-  let c = 0;
-  if (fields.kill!==null) c++;
-  if (fields.loss!==null) c++;
-  if (fields.build!==null) c++;
-  if (fields.mult!==null) c++;
-  return c;
-}
-
-function isCollapsedSameValue(kill, loss, build){
-  return kill!==null && loss!==null && build!==null && kill===loss && loss===build;
-}
-
-async function recognizeFromScreenshot(file){
-  const uploadBtn = document.querySelector('#ocrUpload');
-  try{
-    uploadBtn.disabled = true;
-    setOcrStatus('載入 OCR 引擎中...');
-    const Tesseract = await loadTesseract();
-    const img = await fileToImage(file);
-    const ocrImg = downscaleImageForOcr(img, 2200);
-    const rawCanvas = buildOcrCanvas(ocrImg, 'raw');
-    const contrastCanvas = buildOcrCanvas(ocrImg, 'contrast');
-    const binaryCanvas = buildOcrCanvas(ocrImg, 'binary');
-    setOcrStatus('辨識中，請稍候...');
-    const result = await Tesseract.recognize(rawCanvas, 'chi_tra+eng', {
-      logger: (m) => {
-        if (m && m.status === 'recognizing text' && typeof m.progress === 'number'){
-          setOcrStatus(`辨識中 ${Math.round(m.progress*100)}%`);
-        }
-      }
-    });
-    const textRaw = normalizeOcrText(result?.data?.text || '');
-    const fullRaw = parseFieldsFromText(textRaw);
-    const layoutRaw = parseFieldsFromWordLayout(result?.data || null, rawCanvas.width, rawCanvas.height);
-
-    let merged = {
-      // 以 bbox 解析為主，全文 regex 為備援。
-      kill: mergeField(layoutRaw.kill, fullRaw.kill, 'kill'),
-      loss: mergeField(layoutRaw.loss, fullRaw.loss, 'loss'),
-      build: mergeField(layoutRaw.build, fullRaw.build, 'build'),
-      mult: mergeField(layoutRaw.mult, fullRaw.mult, 'mult')
-    };
-    if (countDetectedFields(merged) < 3){
-      const resultContrast = await Tesseract.recognize(contrastCanvas, 'chi_tra+eng');
-      const textContrast = normalizeOcrText(resultContrast?.data?.text || '');
-      const fullContrast = parseFieldsFromText(textContrast);
-      merged = {
-        kill: mergeField(merged.kill, fullContrast.kill, 'kill'),
-        loss: mergeField(merged.loss, fullContrast.loss, 'loss'),
-        build: mergeField(merged.build, fullContrast.build, 'build'),
-        mult: mergeField(merged.mult, fullContrast.mult, 'mult')
-      };
-    }
-
-    if (countDetectedFields(merged) < 3){
-      const resultBinary = await Tesseract.recognize(binaryCanvas, 'chi_tra+eng');
-      const textBinary = normalizeOcrText(resultBinary?.data?.text || '');
-      const fullBinary = parseFieldsFromText(textBinary);
-      merged = {
-        kill: mergeField(merged.kill, fullBinary.kill, 'kill'),
-        loss: mergeField(merged.loss, fullBinary.loss, 'loss'),
-        build: mergeField(merged.build, fullBinary.build, 'build'),
-        mult: mergeField(merged.mult, fullBinary.mult, 'mult')
-      };
-    }
-
-    let kill = merged.kill;
-    let loss = merged.loss;
-    let build = merged.build;
-    let mult = merged.mult;
-
-    if (isCollapsedSameValue(kill, loss, build)){
-      kill = null;
-      loss = null;
-      build = null;
-    }
-
-    // 遊戲截圖字體特效較強或解析度/裁切比例不同時，改用多版型 ROI + 微調做純數字 OCR。
-    if (kill===null || loss===null || build===null || mult===null){
-      const profiles = getRoiProfilesByAspect(ocrImg);
-      for (const profile of profiles){
-        if (kill===null) kill = await recognizeKillInRegion(Tesseract, ocrImg, profile.rect.kill);
-        if (loss===null) loss = sanitizeDetectedValue('loss', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.loss));
-        if (build===null) build = sanitizeDetectedValue('build', await recognizeDigitsInRegion(Tesseract, ocrImg, profile.rect.build));
-        if (mult===null) mult = sanitizeDetectedValue('mult', await recognizeMultInRegion(Tesseract, ocrImg, profile.rect.mult));
-        if (kill!==null && loss!==null && build!==null && mult!==null) break;
-      }
-    }
-
-    if (kill!==null) document.querySelector('#kill').value = kill;
-    if (loss!==null) document.querySelector('#loss').value = loss;
-    if (build!==null) document.querySelector('#build').value = build;
-    document.querySelector('#ocrMult').textContent = (mult!==null? String(mult) : '—');
-
-    let cls = null;
-    if (kill!==null || loss!==null || build!==null){
-      document.querySelector('#unit').value = 'abs';
-      cls = calc();
-    }
-
-    const record = {
-      createdAt: new Date().toISOString(),
-      fileName: file.name || 'unknown',
-      kill,
-      loss,
-      build,
-      ocrMult: mult,
-      calcMult: cls ? cls.mult : null,
-      scoreWan: cls ? Number(cls.Ewan.toFixed(6)) : null,
-      unit: 'abs',
-      remoteUploaded: false
-    };
-
-    lastCapture = { record, file };
-    hasReportedForCurrentUpload = false;
-
-    if (REMOTE_INGEST_URL){
-      try{
-        const remote = await postRemoteCapture(record, file);
-        if (remote.ok) {
-          record.remoteUploaded = true;
-          hasUploadedCapture = true;
-          document.querySelector('#reportIssue').disabled = false;
-        }
-      }catch(remoteErr){
-        hasUploadedCapture = false;
-        document.querySelector('#reportIssue').disabled = true;
-        // 遠端上傳失敗不影響主流程，僅保留在 console 供除錯。
-        console.warn('Remote upload failed:', remoteErr);
-      }
-    }else{
-      hasUploadedCapture = false;
-      document.querySelector('#reportIssue').disabled = true;
-    }
-
-    const found = [];
-    if (kill!==null) found.push(`殲敵=${kill}`);
-    if (loss!==null) found.push(`戰損=${loss}`);
-    if (build!==null) found.push(`建設=${build}`);
-    if (mult!==null) found.push(`畫面倍數=${mult}`);
-
-    if (found.length===0){
-      setOcrStatus('未擷取到欄位，可改用「純回報不辨識」');
-    }else{
-      setOcrStatus(`完成：${found.join('，')}`);
-    }
-  }catch(err){
-    const fallbackRecord = {
-      createdAt: new Date().toISOString(),
-      fileName: (file && file.name) ? file.name : 'unknown',
-      kill: null,
-      loss: null,
-      build: null,
-      ocrMult: null,
-      calcMult: null,
-      scoreWan: null,
-      unit: 'abs',
-      remoteUploaded: false,
-      ocrError: err?.message || '未知錯誤'
-    };
-    lastCapture = { record: fallbackRecord, file };
-    hasReportedForCurrentUpload = false;
-
-    if (REMOTE_INGEST_URL && file){
-      try{
-        const remote = await postRemoteCapture(fallbackRecord, file);
-        if (remote.ok){
-          hasUploadedCapture = true;
-          document.querySelector('#reportIssue').disabled = false;
-          setOcrStatus('OCR 失敗，可改用「純回報不辨識」');
-        }else{
-          setOcrStatus('OCR 失敗，請重試');
-        }
-      }catch(uploadErr){
-        hasUploadedCapture = false;
-        document.querySelector('#reportIssue').disabled = true;
-        setOcrStatus('OCR 失敗，請重試');
-      }
-    }else{
-      setOcrStatus('OCR 失敗，請重試');
-    }
-  }finally{
-    uploadBtn.disabled = false;
   }
 }
 
@@ -1120,7 +290,6 @@ function clearAll(){
   document.querySelector('#build').value = 0;
   document.querySelector('#Ewan').textContent = '—';
   document.querySelector('#mult').textContent = '—';
-  document.querySelector('#ocrMult').textContent = '—';
   document.querySelector('#lower').textContent = '—';
   document.querySelector('#next').textContent = '—';
   document.querySelector('#pct').textContent = '—';
@@ -1128,27 +297,9 @@ function clearAll(){
   setOcrStatus('待機');
   hasUploadedCapture = false;
   hasReportedForCurrentUpload = false;
-  document.querySelector('#reportIssue').disabled = true;
 }
 
 document.querySelector('#calc').addEventListener('click', calc);
-
-document.querySelector('#ocrUpload').addEventListener('click', () => {
-  document.querySelector('#ocrFile').click();
-});
-
-document.querySelector('#ocrFile').addEventListener('change', (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  const check = validateUploadFile(file);
-  if (!check.ok){
-    setOcrStatus(check.message);
-    e.target.value = '';
-    return;
-  }
-  recognizeFromScreenshot(file);
-  e.target.value = '';
-});
 
 document.querySelector('#reportOnlyUpload').addEventListener('click', () => {
   document.querySelector('#reportOnlyFile').click();
@@ -1161,12 +312,9 @@ document.querySelector('#reportOnlyFile').addEventListener('change', (e) => {
   e.target.value = '';
 });
 
-document.querySelector('#reportIssue').addEventListener('click', reportCurrentCapture);
-
 document.querySelector('#clear').addEventListener('click', clearAll);
 
 renderThresholds();
-document.querySelector('#reportIssue').disabled = !hasUploadedCapture || hasReportedForCurrentUpload;
 </script>
 </body>
 </html>
