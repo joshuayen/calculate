@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>年度獎勵倍率計算器（v11.2.3_OCR）</title>
+  <title>年度獎勵倍率計算器（v11.2.4_OCR）</title>
   <style>
     :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#a1a1aa;--accent:#22c55e;--card:#111827;--border:#334155;--warn:#f59e0b}
     body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.6;margin:0;padding:2rem}
@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <h1>年度獎勵倍率計算器（v11.2.3_OCR）</h1>
+  <h1>年度獎勵倍率計算器（v11.2.4_OCR）</h1>
   <div class="card">
     <div class="mono">E = α×殲敵 + w×戰損 + β×建設</div>
     <div class="muted">最佳權重（以「萬」為單位）：α=1.50, w=3.88, β=18.30（在 75 筆樣本上達到 100% 可分離）</div>
@@ -73,6 +73,8 @@
       <button class="btn primary" id="calc">計算倍數</button>
       <button class="btn" id="ocrUpload">上傳截圖辨識</button>
       <input id="ocrFile" type="file" accept="image/*" style="display:none" />
+      <button class="btn" id="reportOnlyUpload">純回報不辨識</button>
+      <input id="reportOnlyFile" type="file" accept="image/*" style="display:none" />
       <button class="btn" id="reportIssue" disabled>辨識異常或數據回報</button>
       <button class="btn" id="clear">清空</button>
       <span class="muted">提示：門檻是以上述最佳權重推得；如修改權重，倍數邊界將隨之變化。</span>
@@ -128,7 +130,7 @@
   </div>
 
   <footer class="muted">
-    <div class="mono">版本：v11.2.3_OCR — 樣本數：77 — 最後更新時間：2026-07-10 03:22:00 (GMT+08:00)</div>
+    <div class="mono">版本：v11.2.4_OCR — 樣本數：77 — 最後更新時間：2026-07-10 03:36:00 (GMT+08:00)</div>
   </footer>
 
 <script>
@@ -262,6 +264,55 @@ async function reportCurrentCapture(){
     setOcrStatus(`回報失敗：${err?.message || '未知錯誤'}`);
   }finally{
     reportBtn.disabled = !hasUploadedCapture || hasReportedForCurrentUpload;
+  }
+}
+
+async function uploadReportOnly(file){
+  const btn = document.querySelector('#reportOnlyUpload');
+  const check = validateUploadFile(file);
+  if (!check.ok){
+    setOcrStatus(check.message);
+    return;
+  }
+
+  if (!REMOTE_INGEST_URL){
+    setOcrStatus('未設定遠端上傳 API，無法送出純回報');
+    return;
+  }
+
+  try{
+    btn.disabled = true;
+    setOcrStatus('純回報上傳中...');
+
+    const record = {
+      createdAt: new Date().toISOString(),
+      fileName: file.name || 'unknown',
+      kill: null,
+      loss: null,
+      build: null,
+      ocrMult: null,
+      calcMult: null,
+      scoreWan: null,
+      unit: 'abs',
+      remoteUploaded: false,
+      reportOnly: true
+    };
+
+    const remote = await postRemoteCapture(record, file, {
+      action: 'report_only',
+      includeImage: true,
+      reportMessage: '使用者使用「純回報不辨識」上傳圖片。'
+    });
+
+    if (remote.ok){
+      setOcrStatus('純回報上傳完成，已送出圖片');
+    }else{
+      setOcrStatus('純回報上傳失敗');
+    }
+  }catch(err){
+    setOcrStatus(`純回報上傳失敗：${err?.message || '未知錯誤'}`);
+  }finally{
+    btn.disabled = false;
   }
 }
 
@@ -968,7 +1019,7 @@ async function recognizeFromScreenshot(file){
     if (mult!==null) found.push(`畫面倍數=${mult}`);
 
     if (found.length===0){
-      setOcrStatus('未擷取到欄位，但原圖已上傳，可直接按「辨識異常或數據回報」');
+      setOcrStatus('未擷取到欄位，可改用「純回報不辨識」');
     }else{
       setOcrStatus(`完成：${found.join('，')}`);
     }
@@ -995,17 +1046,17 @@ async function recognizeFromScreenshot(file){
         if (remote.ok){
           hasUploadedCapture = true;
           document.querySelector('#reportIssue').disabled = false;
-          setOcrStatus('OCR 失敗，但原圖已上傳，可直接按「辨識異常或數據回報」');
+          setOcrStatus('OCR 失敗，可改用「純回報不辨識」');
         }else{
-          setOcrStatus(`失敗：${err?.message || '未知錯誤'}`);
+          setOcrStatus('OCR 失敗，請重試');
         }
       }catch(uploadErr){
         hasUploadedCapture = false;
         document.querySelector('#reportIssue').disabled = true;
-        setOcrStatus(`失敗：${err?.message || '未知錯誤'}；且上傳失敗`);
+        setOcrStatus('OCR 失敗，請重試');
       }
     }else{
-      setOcrStatus(`失敗：${err?.message || '未知錯誤'}`);
+      setOcrStatus('OCR 失敗，請重試');
     }
   }finally{
     uploadBtn.disabled = false;
@@ -1096,6 +1147,17 @@ document.querySelector('#ocrFile').addEventListener('change', (e) => {
     return;
   }
   recognizeFromScreenshot(file);
+  e.target.value = '';
+});
+
+document.querySelector('#reportOnlyUpload').addEventListener('click', () => {
+  document.querySelector('#reportOnlyFile').click();
+});
+
+document.querySelector('#reportOnlyFile').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  uploadReportOnly(file);
   e.target.value = '';
 });
 
