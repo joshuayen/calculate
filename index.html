@@ -76,8 +76,7 @@
       <button class="btn" id="clear">清空</button>
       <span class="muted">提示：門檻是以上述最佳權重推得；如修改權重，倍數邊界將隨之變化。</span>
     </div>
-    <div class="muted">說明：可直接上傳截圖供作者檢視與後續維護。</div>
-    <div id="ocrStatus" class="muted" style="margin-top:.5rem">OCR：待機</div>
+    <div id="ocrStatus" class="muted" style="margin-top:.5rem"></div>
   </div>
 
   <div class="card">
@@ -136,7 +135,7 @@ const REMOTE_INGEST_URL = 'https://script.google.com/macros/s/AKfycbzFEWLt_A3gZq
 // 10→11 依「剛升上11不久」樣本貼近估計（E_min_11 ~= 9630.46）
 const THRESHOLDS_WAN = [21.019225, 43.892327, 107.344998, 227.553820, 445.080909, 816.687183, 1199.938721, 1913.281751, 3052.800956, 5723.996012, 9630.450000];
 
-function setOcrStatus(msg){ document.querySelector('#ocrStatus').textContent = `OCR：${msg}`; }
+function setOcrStatus(msg){ document.querySelector('#ocrStatus').textContent = String(msg || ''); }
 
 function validateUploadFile(file){
   if (!file) return { ok:false, message:'未選擇檔案' };
@@ -294,7 +293,7 @@ function clearAll(){
   document.querySelector('#next').textContent = '—';
   document.querySelector('#pct').textContent = '—';
   document.querySelector('#bar').style.width = '0%';
-  setOcrStatus('待機');
+  setOcrStatus('');
   hasUploadedCapture = false;
   hasReportedForCurrentUpload = false;
 }
